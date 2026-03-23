@@ -1,4 +1,5 @@
 import '../models/shopping_list_model.dart';
+import '../models/shopping_list_summary_model.dart';
 import 'api_client.dart';
 
 class ShoppingListApiService {
@@ -6,10 +7,17 @@ class ShoppingListApiService {
 
   ShoppingListApiService(this._apiClient);
 
-  Future<ShoppingListModel> createList(String name, {String? ownerId}) async {
-    final body = <String, dynamic>{'name': name};
-    if (ownerId != null) body['ownerId'] = ownerId;
+  Future<List<ShoppingListSummaryModel>> getMyLists() async {
+    final list = await _apiClient.getList('/lists/me');
+    return list
+        .map(
+          (e) => ShoppingListSummaryModel.fromJson(e as Map<String, dynamic>),
+        )
+        .toList();
+  }
 
+  Future<ShoppingListModel> createList(String name) async {
+    final body = <String, dynamic>{'name': name};
     final json = await _apiClient.post('/lists', body: body);
     return ShoppingListModel.fromJson(json);
   }

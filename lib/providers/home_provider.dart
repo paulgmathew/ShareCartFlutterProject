@@ -8,11 +8,11 @@ class HomeProvider extends ChangeNotifier {
   final ShoppingListRepository _repository;
 
   HomeProvider(this._repository) {
-    _loadSavedLists();
+    _loadMyLists();
   }
 
-  List<ShoppingListModel> _lists = [];
-  List<ShoppingListModel> get lists => _lists;
+  List<ShoppingListSummaryModel> _lists = [];
+  List<ShoppingListSummaryModel> get lists => _lists;
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
@@ -20,37 +20,30 @@ class HomeProvider extends ChangeNotifier {
   String? _errorMessage;
   String? get errorMessage => _errorMessage;
 
-  Future<void> _loadSavedLists() async {
-    final ids = _repository.getSavedListIds();
-    if (ids.isEmpty) return;
-
+  Future<void> _loadMyLists() async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
-    final loaded = <ShoppingListModel>[];
-    for (final id in ids) {
-      try {
-        loaded.add(await _repository.getListById(id));
-      } on ApiException {
-        // List may have been deleted on backend; skip it
-      }
+    try {
+      _lists = await _repository.getMyLists();
+    } on ApiException catch (e) {
+      _errorMessage = e.error.message;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
-    _lists = loaded;
-    _isLoading = false;
-    notifyListeners();
   }
 
   Future<void> refresh() async {
-    await _loadSavedLists();
+    await _loadMyLists();
   }
 
-  Future<ShoppingListModel> createList(String name, {String? ownerId}) async {
+  Future<String> createList(String name) async {
     try {
-      final list = await _repository.createList(name, ownerId: ownerId);
-      _lists.add(list);
-      notifyListeners();
-      return list;
+      final list = await _repository.createList(name);
+      await _loadMyLists();
+      return list.id;
     } on ApiException catch (e) {
       _errorMessage = e.error.message;
       notifyListeners();
@@ -60,23 +53,12 @@ class HomeProvider extends ChangeNotifier {
 
   Future<void> openListById(String listId) async {
     try {
-      final list = await _repository.getListById(listId);
-      await _repository.saveListId(listId);
-      if (!_lists.any((l) => l.id == listId)) {
-        _lists.add(list);
-        notifyListeners();
-      }
+      await _repository.getListById(listId);
     } on ApiException catch (e) {
       _errorMessage = e.error.message;
       notifyListeners();
       rethrow;
     }
-  }
-
-  Future<void> removeList(String listId) async {
-    await _repository.removeListId(listId);
-    _lists.removeWhere((l) => l.id == listId);
-    notifyListeners();
   }
 
   void clearError() {

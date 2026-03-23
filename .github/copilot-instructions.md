@@ -3,7 +3,7 @@
 ## Project Overview
 
 Share Cart is a Flutter mobile application for managing shared grocery/shopping lists.
-It connects to a Spring Boot REST backend over HTTP (no auth yet).
+It connects to a Spring Boot REST backend over HTTP using JWT authentication.
 The backend API contract is documented in `docs/flutter-backend-integration.md`.
 
 ## Tech Stack
@@ -105,8 +105,6 @@ Base URL is auto-detected per platform in `ApiConfig`.
 
 ## What Does NOT Exist Yet
 
-- Authentication / authorization
-- Login / signup screens
 - `GET /lists` (fetch all lists)
 - `GET /items/{id}` (fetch single item)
 - `DELETE /lists/{id}` (delete a list)
