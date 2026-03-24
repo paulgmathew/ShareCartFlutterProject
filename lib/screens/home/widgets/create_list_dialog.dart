@@ -14,14 +14,12 @@ class CreateListDialog extends StatefulWidget {
 class _CreateListDialogState extends State<CreateListDialog> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  final _ownerIdController = TextEditingController();
   bool _isSubmitting = false;
   String? _error;
 
   @override
   void dispose() {
     _nameController.dispose();
-    _ownerIdController.dispose();
     super.dispose();
   }
 
@@ -35,14 +33,8 @@ class _CreateListDialogState extends State<CreateListDialog> {
 
     try {
       final provider = context.read<HomeProvider>();
-      final list = await provider.createList(
-        _nameController.text.trim(),
-        ownerId:
-            _ownerIdController.text.trim().isNotEmpty
-                ? _ownerIdController.text.trim()
-                : null,
-      );
-      if (mounted) Navigator.pop(context, list.id);
+      final listId = await provider.createList(_nameController.text.trim());
+      if (mounted) Navigator.pop(context, listId);
     } on ApiException catch (e) {
       setState(() => _error = e.error.message);
     } finally {
@@ -81,15 +73,6 @@ class _CreateListDialogState extends State<CreateListDialog> {
                 }
                 return null;
               },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _ownerIdController,
-              decoration: const InputDecoration(
-                labelText: 'Owner ID (optional)',
-                hintText: 'UUID of the owner',
-                border: OutlineInputBorder(),
-              ),
             ),
           ],
         ),

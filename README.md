@@ -14,7 +14,9 @@ Share Cart connects to a [Spring Boot REST backend](docs/flutter-backend-integra
 
 ## Features
 
-- **Create shopping lists** with an optional owner
+- **JWT authentication** — register and login with email and password
+- **Create shopping lists** — backend assigns ownership from JWT token automatically
+- **Home screen loads your lists** — fetches all lists owned by or shared with the logged-in user
 - **Add, edit, and delete items** — name, quantity, and category
 - **Toggle item completion** with a single tap
 - **Invite members** to collaborate on a list
@@ -22,7 +24,8 @@ Share Cart connects to a [Spring Boot REST backend](docs/flutter-backend-integra
 - **Items grouped by category** on the detail screen
 - **Swipe-to-delete** with confirmation
 - **Pull-to-refresh** to sync with the backend
-- **Local persistence** of known list IDs so they survive app restarts
+- **Secure token storage** using `flutter_secure_storage` (not SharedPreferences)
+- **Auto-logout** on 403 — app returns to login screen if token expires
 - **Material 3** theming with automatic light/dark mode
 
 ---
@@ -35,8 +38,9 @@ Share Cart connects to a [Spring Boot REST backend](docs/flutter-backend-integra
 | State Management   | Provider (`ChangeNotifier`)      |
 | HTTP Client        | `http` package                   |
 | Local Storage      | `shared_preferences`             |
+| Secure Storage     | `flutter_secure_storage`         |
 | Design System      | Material 3 with green color seed |
-| Backend            | Spring Boot REST API             |
+| Backend            | Spring Boot REST API (JWT)       |
 
 ---
 
@@ -50,27 +54,37 @@ Screens (UI)  →  Providers (State)  →  Repository  →  API Services  →  A
 
 ```
 lib/
-├── main.dart                          # Entry point
+├── main.dart                          # Entry point + DI wiring
 ├── app.dart                           # MaterialApp with theming
 ├── config/
 │   └── api_config.dart                # Platform-aware base URL
 ├── models/
 │   ├── models.dart                    # Barrel export
+│   ├── auth_response_model.dart
 │   ├── shopping_list_model.dart
+│   ├── shopping_list_summary_model.dart
 │   ├── item_model.dart
 │   ├── member_model.dart
 │   └── api_error_model.dart
 ├── services/
 │   ├── services.dart                  # Barrel export
-│   ├── api_client.dart                # HTTP client + error mapping
+│   ├── api_client.dart                # HTTP client + Bearer token + error mapping
+│   ├── auth_api_service.dart
 │   ├── shopping_list_api_service.dart
 │   └── item_api_service.dart
 ├── repositories/
-│   └── shopping_list_repository.dart  # API + local persistence
+│   ├── auth_session_repository.dart   # Secure JWT storage (ChangeNotifier)
+│   ├── auth_repository.dart           # Auth orchestration
+│   └── shopping_list_repository.dart
 ├── providers/
+│   ├── auth_provider.dart
 │   ├── home_provider.dart
 │   └── list_detail_provider.dart
 └── screens/
+    ├── auth/
+    │   ├── auth_gate.dart             # Routes to login or home based on auth state
+    │   ├── login_screen.dart
+    │   └── register_screen.dart
     ├── home/
     │   ├── home_screen.dart
     │   └── widgets/
@@ -157,16 +171,19 @@ The project uses `flutter_lints` for lint rules configured in `analysis_options.
 
 ## API Endpoints
 
-The app integrates with six backend endpoints:
+All protected endpoints require an `Authorization: Bearer <token>` header. The token is obtained from login/register and stored securely.
 
-| Action         | Method   | Endpoint                         |
-|----------------|----------|----------------------------------|
-| Create list    | `POST`   | `/api/v1/lists`                  |
-| Get list       | `GET`    | `/api/v1/lists/{id}`             |
-| Invite user    | `POST`   | `/api/v1/lists/{id}/invite`      |
-| Add item       | `POST`   | `/api/v1/lists/{listId}/items`   |
-| Update item    | `PUT`    | `/api/v1/items/{id}`             |
-| Delete item    | `DELETE` | `/api/v1/items/{id}`             |
+| Action              | Method   | Auth?    | Endpoint                         |
+|---------------------|----------|----------|----------------------------------|
+| Register            | `POST`   | Public   | `/api/v1/auth/register`          |
+| Login               | `POST`   | Public   | `/api/v1/auth/login`             |
+| Get my lists        | `GET`    | Required | `/api/v1/lists/me`               |
+| Create list         | `POST`   | Required | `/api/v1/lists`                  |
+| Get list            | `GET`    | Required | `/api/v1/lists/{id}`             |
+| Invite user         | `POST`   | Required | `/api/v1/lists/{id}/invite`      |
+| Add item            | `POST`   | Required | `/api/v1/lists/{listId}/items`   |
+| Update item         | `PUT`    | Required | `/api/v1/items/{id}`             |
+| Delete item         | `DELETE` | Required | `/api/v1/items/{id}`             |
 
 Full API contract: [docs/flutter-backend-integration.md](docs/flutter-backend-integration.md).
 
@@ -174,7 +191,8 @@ Full API contract: [docs/flutter-backend-integration.md](docs/flutter-backend-in
 
 ## Roadmap
 
-- [ ] Authentication and user login
+- [x] Authentication and user login/register
+- [x] Home screen loads lists owned by or shared with the user
 - [ ] User search / discovery for invitations
 - [ ] Delete shopping lists
 - [ ] Offline mode with local caching

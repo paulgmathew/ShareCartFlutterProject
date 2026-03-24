@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/models.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../list_detail/list_detail_screen.dart';
 import 'widgets/create_list_dialog.dart';
@@ -15,9 +17,24 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Share Cart'),
         actions: [
+          Consumer<AuthProvider>(
+            builder: (context, auth, _) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Text(auth.name ?? auth.email ?? ''),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => context.read<HomeProvider>().refresh(),
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Logout',
+            onPressed: () => context.read<AuthProvider>().logout(),
           ),
         ],
       ),
@@ -66,19 +83,7 @@ class HomeScreen extends StatelessWidget {
                   child: ListTile(
                     leading: const Icon(Icons.shopping_cart),
                     title: Text(list.name),
-                    subtitle: Text(
-                      '${list.items.length} items · ${list.members.length} members',
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.remove_circle_outline),
-                      onPressed:
-                          () => _confirmRemove(
-                            context,
-                            provider,
-                            list.id,
-                            list.name,
-                          ),
-                    ),
+                    subtitle: Text(_listSubtitle(list)),
                     onTap: () => _navigateToDetail(context, list.id),
                   ),
                 );
@@ -133,34 +138,11 @@ class HomeScreen extends StatelessWidget {
     ).push(MaterialPageRoute(builder: (_) => ListDetailScreen(listId: listId)));
   }
 
-  void _confirmRemove(
-    BuildContext context,
-    HomeProvider provider,
-    String listId,
-    String listName,
-  ) {
-    showDialog(
-      context: context,
-      builder:
-          (ctx) => AlertDialog(
-            title: const Text('Remove List'),
-            content: Text(
-              'Remove "$listName" from your home screen? This will not delete it from the server.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () {
-                  provider.removeList(listId);
-                  Navigator.pop(ctx);
-                },
-                child: const Text('Remove'),
-              ),
-            ],
-          ),
-    );
+  String _listSubtitle(ShoppingListSummaryModel list) {
+    final role = list.memberRole;
+    if (role == 'OWNER') return 'Your list';
+    if (role == 'MEMBER') return 'Shared with you';
+    if (list.ownerName != null) return 'by ${list.ownerName}';
+    return '';
   }
 }

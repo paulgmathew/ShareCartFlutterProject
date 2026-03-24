@@ -6,9 +6,8 @@ import '../services/services.dart';
 class ShoppingListRepository {
   final ShoppingListApiService _listService;
   final ItemApiService _itemService;
+  // ignore: unused_field
   final SharedPreferences _prefs;
-
-  static const _savedListIdsKey = 'saved_list_ids';
 
   ShoppingListRepository({
     required ShoppingListApiService listService,
@@ -18,32 +17,14 @@ class ShoppingListRepository {
        _itemService = itemService,
        _prefs = prefs;
 
-  // --- Local list ID persistence ---
-
-  List<String> getSavedListIds() {
-    return _prefs.getStringList(_savedListIdsKey) ?? [];
-  }
-
-  Future<void> saveListId(String listId) async {
-    final ids = getSavedListIds();
-    if (!ids.contains(listId)) {
-      ids.add(listId);
-      await _prefs.setStringList(_savedListIdsKey, ids);
-    }
-  }
-
-  Future<void> removeListId(String listId) async {
-    final ids = getSavedListIds();
-    ids.remove(listId);
-    await _prefs.setStringList(_savedListIdsKey, ids);
-  }
-
   // --- Shopping List API ---
 
-  Future<ShoppingListModel> createList(String name, {String? ownerId}) async {
-    final list = await _listService.createList(name, ownerId: ownerId);
-    await saveListId(list.id);
-    return list;
+  Future<List<ShoppingListSummaryModel>> getMyLists() async {
+    return _listService.getMyLists();
+  }
+
+  Future<ShoppingListModel> createList(String name) async {
+    return _listService.createList(name);
   }
 
   Future<ShoppingListModel> getListById(String listId) async {
