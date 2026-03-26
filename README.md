@@ -106,8 +106,8 @@ For a detailed breakdown, see [docs/flutter-app-architecture.md](docs/flutter-ap
 ## Prerequisites
 
 - [Flutter SDK](https://docs.flutter.dev/get-started/install) (^3.7.2)
-- The Share Cart Spring Boot backend running on port **8080**
 - An Android emulator, iOS simulator, or Chrome for web
+- The Share Cart Spring Boot backend — either running locally on port **8080**, or use the deployed Render instance (configured by default)
 
 ---
 
@@ -126,15 +126,25 @@ cd ShareCartFlutterProject
 flutter pub get
 ```
 
-### 3. Start the backend
+### 3. Configure the backend
 
-Make sure the Spring Boot backend is running at `http://localhost:8080`. The app auto-detects the correct base URL per platform:
+Open `lib/config/api_config.dart` and set the `useProductionServer` flag:
 
-| Platform         | Base URL                        |
-|------------------|---------------------------------|
-| Android emulator | `http://10.0.2.2:8080/api/v1`  |
-| iOS simulator    | `http://127.0.0.1:8080/api/v1` |
-| Web (Chrome)     | `http://localhost:8080/api/v1`  |
+```dart
+// true  → uses the deployed Render backend (default)
+// false → uses your local Spring Boot on port 8080
+static const bool useProductionServer = true;
+```
+
+When using **local mode**, the base URL is auto-detected per platform:
+
+| Platform              | Base URL                         |
+|-----------------------|----------------------------------|
+| Android emulator      | `http://10.0.2.2:8080/api/v1`   |
+| iOS simulator / macOS | `http://127.0.0.1:8080/api/v1`  |
+| Web (Chrome)          | `http://localhost:8080/api/v1`   |
+
+See [docs/environment-config.md](docs/environment-config.md) for full details.
 
 ### 4. Run the app
 
@@ -208,6 +218,7 @@ Full API contract: [docs/flutter-backend-integration.md](docs/flutter-backend-in
 |--------------------------------------------------------------------------|--------------------------------------|
 | [Backend Integration Guide](docs/flutter-backend-integration.md)         | Full backend API contract            |
 | [App Architecture](docs/flutter-app-architecture.md)                     | Detailed architecture documentation  |
+| [Environment Config](docs/environment-config.md)                         | Switch between production and local  |
 | [Copilot Instructions](.github/copilot-instructions.md)                  | Coding conventions for AI assistants |
 
 ---
