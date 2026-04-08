@@ -11,7 +11,9 @@ import 'repositories/shopping_list_repository.dart';
 import 'services/api_client.dart';
 import 'services/auth_api_service.dart';
 import 'services/item_api_service.dart';
+import 'services/realtime_sync_service.dart';
 import 'services/shopping_list_api_service.dart';
+import 'config/api_config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,6 +47,11 @@ void main() async {
     prefs: prefs,
   );
 
+  final realtimeSyncService = RealtimeSyncService(
+    wsUrl: ApiConfig.webSocketUrl,
+    accessTokenProvider: () async => authRepository.getAccessToken(),
+  );
+
   runApp(
     MultiProvider(
       providers: [
@@ -53,6 +60,7 @@ void main() async {
         ),
         Provider<AuthRepository>.value(value: authRepository),
         Provider<ShoppingListRepository>.value(value: repository),
+        Provider<RealtimeSyncService>.value(value: realtimeSyncService),
         ChangeNotifierProvider(
           create:
               (ctx) => AuthProvider(

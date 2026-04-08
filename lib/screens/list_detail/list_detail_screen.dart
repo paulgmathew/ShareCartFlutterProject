@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../providers/list_detail_provider.dart';
 import '../../repositories/shopping_list_repository.dart';
+import '../../services/realtime_sync_service.dart';
 import 'widgets/add_item_sheet.dart';
 import 'widgets/invite_member_sheet.dart';
 import 'widgets/item_tile.dart';
@@ -17,9 +18,10 @@ class ListDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create:
-          (ctx) =>
-              ListDetailProvider(ctx.read<ShoppingListRepository>())
-                ..loadList(listId),
+          (ctx) => ListDetailProvider(
+            ctx.read<ShoppingListRepository>(),
+            ctx.read<RealtimeSyncService>(),
+          )..loadList(listId),
       child: _ListDetailBody(listId: listId),
     );
   }

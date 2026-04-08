@@ -113,13 +113,15 @@ class HomeScreen extends StatelessWidget {
   }
 
   void _showCreateListDialog(BuildContext context) {
-    showDialog(context: context, builder: (_) => const CreateListDialog()).then(
-      (listId) {
-        if (listId != null && context.mounted) {
-          _navigateToDetail(context, listId as String);
-        }
-      },
-    );
+    final homeProvider = context.read<HomeProvider>();
+    showDialog(
+      context: context,
+      builder: (_) => CreateListDialog(homeProvider: homeProvider),
+    ).then((listId) {
+      if (listId != null && context.mounted) {
+        _navigateToDetail(context, listId as String);
+      }
+    });
   }
 
   void _showOpenListDialog(BuildContext context) {
