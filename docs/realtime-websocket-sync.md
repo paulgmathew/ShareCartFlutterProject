@@ -27,11 +27,11 @@ If either check fails, the server rejects the STOMP frame.
 
 ## Flutter Setup
 
-Recommended package:
+`stomp_dart_client` is already included in `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  stomp_dart_client: ^2.0.0
+  stomp_dart_client: ^2.1.3
 ```
 
 ## URL Mapping For Flutter Environments
@@ -67,159 +67,86 @@ Every message sent to `/topic/lists/{listId}` has this shape:
 }
 ```
 
-## Flutter STOMP Client Template
+The Flutter model for this payload is `ListRealtimeEventModel` (`lib/models/list_realtime_event_model.dart`). The `item` field is parsed directly into a typed `ItemModel`, not a raw map.
 
-```dart
-import 'dart:async';
-import 'dart:convert';
+## Implemented Service: `RealtimeSyncService`
 
-import 'package:stomp_dart_client/stomp_dart_client.dart';
+The actual implementation is in `lib/services/realtime_sync_service.dart`.
 
-class ListRealtimeEvent {
-  final String eventType;
-  final String listId;
-  final Map<String, dynamic> item;
-  final DateTime occurredAt;
+### Key API
 
-  ListRealtimeEvent({
-    required this.eventType,
-    required this.listId,
-    required this.item,
-    required this.occurredAt,
-  });
+| Method | Purpose |
+|---|---|
+| `ensureConnected()` | Connects STOMP (idempotent — safe to call multiple times) |
+| `subscribeToList(listId)` | Subscribes to `/topic/lists/{listId}`, calls `ensureConnected()` first |
+| `unsubscribeFromList(listId)` | Removes subscription for that list |
+| `dispose()` | Unsubscribes all, deactivates STOMP client, closes streams |
 
-  factory ListRealtimeEvent.fromJson(Map<String, dynamic> json) {
-    return ListRealtimeEvent(
-      eventType: json['eventType'] as String,
-      listId: json['listId'] as String,
-      item: (json['item'] as Map).cast<String, dynamic>(),
-      occurredAt: DateTime.parse(json['occurredAt'] as String),
-    );
-  }
-}
+### Streams
 
-class ShareCartRealtimeClient {
-  final String wsUrl;
-  final Future<String?> Function() getJwtToken;
-  final Future<void> Function(String listId) onNeedResync;
+| Stream | Type | Purpose |
+|---|---|---|
+| `events` | `Stream<ListRealtimeEventModel>` | Emits parsed events for all subscribed lists |
+| `resyncRequests` | `Stream<String>` | Emits a `listId` when a REST resync is required (parse error, disconnect, reconnect) |
 
-  StompClient? _client;
-  final Map<String, StompUnsubscribe> _subscriptions = {};
-  final _eventController = StreamController<ListRealtimeEvent>.broadcast();
+### Reconnect behaviour
 
-  Stream<ListRealtimeEvent> get events => _eventController.stream;
+- `reconnectDelay` is set to 3 seconds.
+- On reconnect (`onConnect`), all active subscriptions are re-attached and a resync is requested for each.
+- On disconnect / WebSocket error / STOMP error, a resync is requested for all active subscriptions via `resyncRequests`.
 
-  ShareCartRealtimeClient({
-    required this.wsUrl,
-    required this.getJwtToken,
-    required this.onNeedResync,
-  });
+### Integration with `ListDetailProvider`
 
-  Future<void> connect() async {
-    final token = await getJwtToken();
-    if (token == null || token.isEmpty) {
-      throw StateError('Missing JWT token for STOMP CONNECT');
-    }
+`ListDetailProvider` subscribes via `_startRealtimeForList(listId)` after loading the list:
 
-    _client = StompClient(
-      config: StompConfig(
-        url: wsUrl,
-        stompConnectHeaders: {'Authorization': 'Bearer $token'},
-        webSocketConnectHeaders: {'Authorization': 'Bearer $token'},
-        reconnectDelay: const Duration(seconds: 3),
-        onConnect: (_) {},
-        onStompError: (frame) {
-          // Server rejected CONNECT/SUBSCRIBE (auth or access issue)
-          print('STOMP error: ${frame.body}');
-        },
-        onWebSocketError: (error) {
-          print('WebSocket error: $error');
-        },
-        onDisconnect: (_) {
-          // On reconnect, caller can trigger REST re-sync per opened list
-        },
-      ),
-    );
-
-    _client!.activate();
-  }
-
-  Future<void> subscribeToList(String listId) async {
-    final client = _client;
-    if (client == null) throw StateError('STOMP client not connected');
-
-    if (_subscriptions.containsKey(listId)) return;
-
-    final destination = '/topic/lists/$listId';
-    _subscriptions[listId] = client.subscribe(
-      destination: destination,
-      callback: (frame) {
-        final body = frame.body;
-        if (body == null || body.isEmpty) return;
-
-        try {
-          final jsonMap = jsonDecode(body) as Map<String, dynamic>;
-          final event = ListRealtimeEvent.fromJson(jsonMap);
-          _eventController.add(event);
-        } catch (_) {
-          // If malformed message appears, fall back to REST sync.
-          unawaited(onNeedResync(listId));
-        }
-      },
-    );
-  }
-
-  void unsubscribeFromList(String listId) {
-    _subscriptions.remove(listId)?.call();
-  }
-
-  Future<void> dispose() async {
-    for (final unsub in _subscriptions.values) {
-      unsub();
-    }
-    _subscriptions.clear();
-    _client?.deactivate();
-    await _eventController.close();
-  }
-}
-```
+1. Calls `realtimeSyncService.subscribeToList(listId)`.
+2. Listens to `events` stream and applies `_applyRealtimeEvent(event)`.
+3. Listens to `resyncRequests` stream and calls `loadList(id)` (full REST refresh).
+4. On `dispose()`, calls `unsubscribeFromList(listId)` and cancels both subscriptions.
 
 ## UI State Update Logic
 
-On each `ListRealtimeEvent`:
+`ListDetailProvider._applyRealtimeEvent()` handles each event type:
 
-1. `ITEM_ADDED`: append `item` if not present
-2. `ITEM_UPDATED`: find item by `id` and replace
-3. `ITEM_DELETED`: remove item by `id`
+1. `ITEM_ADDED`: appends `item` to the list if not already present (deduplication by `id`)
+2. `ITEM_UPDATED`: finds item by `id` and replaces it; if not found, triggers full REST resync
+3. `ITEM_DELETED`: removes item by `id`; if not found, no-op
+4. **Unknown `eventType`**: triggers full REST resync via `loadList()`
 
-If any mismatch occurs, call REST `GET /api/v1/lists/{id}` and replace full state.
+All state changes call `notifyListeners()` so the UI rebuilds immediately without waiting for a round-trip.
 
 ## Minimal Integration Sequence
 
 1. Login and store JWT.
 2. Load list screen using REST `GET /api/v1/lists/{id}`.
-3. Connect STOMP with `Authorization: Bearer <jwt>`.
-4. Subscribe to `/topic/lists/{listId}`.
-5. Merge realtime events into state.
-6. On reconnect, trigger REST resync.
+3. `ListDetailProvider.loadList(listId)` calls `_startRealtimeForList(listId)` automatically.
+4. `RealtimeSyncService.subscribeToList(listId)` calls `ensureConnected()` then subscribes.
+5. STOMP CONNECT sends `Authorization: Bearer <jwt>` in headers.
+6. Subscribe to `/topic/lists/{listId}`.
+7. Events flow through `events` stream → `_applyRealtimeEvent()` → `notifyListeners()`.
+8. On disconnect/error, `resyncRequests` stream triggers a full REST reload.
 
 ## Paste-Ready Prompt For Copilot In Flutter Project
 
 ```md
-Implement a ShareCart realtime service using stomp_dart_client.
+The ShareCart realtime service is implemented in lib/services/realtime_sync_service.dart.
 
 Backend contract:
 - WebSocket endpoint: /ws
 - STOMP CONNECT header required: Authorization: Bearer <jwt>
 - Subscribe destination: /topic/lists/{listId}
 - Event types: ITEM_ADDED, ITEM_UPDATED, ITEM_DELETED
-- Event payload fields: eventType, listId, item, occurredAt
+- Event payload fields: eventType, listId, item (typed as ItemModel), occurredAt
 
-Requirements:
-1. Build a singleton realtime client with connect, subscribeToList, unsubscribeFromList, dispose.
-2. Read JWT from secure storage and send it in STOMP CONNECT headers.
-3. Expose a Stream<ListRealtimeEvent> for UI layers.
-4. On ITEM_ADDED/ITEM_UPDATED/ITEM_DELETED, update list state by item id.
-5. On parse errors or reconnects, re-fetch GET /api/v1/lists/{id} to resync.
-6. Provide robust reconnect handling and avoid duplicate subscriptions.
+Implemented classes:
+- RealtimeSyncService: ensureConnected(), subscribeToList(), unsubscribeFromList(), dispose()
+  - Stream<ListRealtimeEventModel> events
+  - Stream<String> resyncRequests
+- ListRealtimeEventModel: fromJson parses item as ItemModel
+- ListDetailProvider: calls _startRealtimeForList(), applies events via _applyRealtimeEvent()
+
+When extending:
+1. Add new event types to the switch in ListDetailProvider._applyRealtimeEvent().
+2. The default case already triggers a full REST resync as a safe fallback.
+3. RealtimeSyncService is provided at the root via Provider and injected into ListDetailProvider.
 ```

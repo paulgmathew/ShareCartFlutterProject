@@ -37,11 +37,25 @@ That is the **only change needed** — no other files need to be touched.
 
 When `useProductionServer = false`, the app automatically picks the correct localhost URL for the platform it is running on:
 
-| Platform             | Base URL                         | Why                                              |
-|----------------------|----------------------------------|--------------------------------------------------|
-| Android emulator     | `http://10.0.2.2:8080/api/v1`   | `10.0.2.2` is the emulator's alias for host `localhost` |
-| iOS simulator / macOS | `http://127.0.0.1:8080/api/v1` | Direct loopback                                   |
-| Web (Chrome)         | `http://localhost:8080/api/v1`   | Standard loopback                                 |
+### REST API
+
+| Platform              | Base URL                          | Why                                                      |
+|-----------------------|-----------------------------------|----------------------------------------------------------|
+| Android emulator      | `http://10.0.2.2:8080/api/v1`    | `10.0.2.2` is the emulator's alias for host `localhost`  |
+| iOS simulator / macOS | `http://127.0.0.1:8080/api/v1`   | Direct loopback                                           |
+| Web (Chrome)          | `http://localhost:8080/api/v1`    | Standard loopback                                         |
+| Physical device       | `http://<your-mac-ip>:8080/api/v1` | Must be on the same Wi-Fi; replace `<your-mac-ip>` manually in `_localBaseUrl` |
+
+### WebSocket
+
+| Platform              | WebSocket URL                    |
+|-----------------------|----------------------------------|
+| Android emulator      | `ws://10.0.2.2:8080/ws`         |
+| iOS simulator / macOS | `ws://127.0.0.1:8080/ws`        |
+| Web (Chrome)          | `ws://localhost:8080/ws`         |
+| Physical device       | `ws://<your-mac-ip>:8080/ws`    |
+
+> **Tip:** To find your Mac's IP on the current Wi-Fi, run `ipconfig getifaddr en0`.
 
 ---
 
@@ -53,18 +67,22 @@ The production backend is hosted on **Render** (free tier):
 https://sharecartspringbootproject.onrender.com/api/v1
 ```
 
-> **Note:** Render's free tier spins down after inactivity. The first request after a cold start may take 30–60 seconds. The app timeout is set to 30 seconds to accommodate this.
+WebSocket:
+
+```
+wss://sharecartspringbootproject.onrender.com/ws
+```
+
+> **Note:** Render's free tier spins down after inactivity. The first request after a cold start may take 30–60 seconds. The app connection timeout is set to 30 seconds.
 
 ---
 
 ## Timeouts
 
-| Setting            | Value |
-|--------------------|-------|
-| Connection timeout | 30 s  |
-| Receive timeout    | 30 s  |
-
-These are defined as constants in `ApiConfig` alongside the URL.
+| Setting            | Value | Applied via |
+|--------------------|-------|-------------|
+| Connection timeout | 30 s  | `.timeout(ApiConfig.connectionTimeout)` on every HTTP call in `ApiClient` |
+| Receive timeout    | 30 s  | Defined as a constant in `ApiConfig` — not currently enforced by `ApiClient` (reserved for future use) |
 
 ---
 
