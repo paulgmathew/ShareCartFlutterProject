@@ -6,7 +6,7 @@ class ApiConfig {
 
   /// Set to [true] to use the deployed Render backend.
   /// Set to [false] to use your local Spring Boot instance.
-  static const bool useProductionServer = false;
+  static const bool useProductionServer = true;
 
   static const String _productionBaseUrl =
       'https://sharecartspringbootproject.onrender.com/api/v1';
@@ -33,6 +33,6 @@ class ApiConfig {
   static String get webSocketUrl =>
       useProductionServer ? _productionWebSocketUrl : _localWebSocketUrl;
 
-  static const Duration connectionTimeout = Duration(seconds: 30);
-  static const Duration receiveTimeout = Duration(seconds: 30);
+  static const Duration connectionTimeout = Duration(seconds: 60);
+  static const Duration receiveTimeout = Duration(seconds: 60);
 }

@@ -2,7 +2,9 @@
 
 ## Overview
 
-Share Cart is a Flutter mobile application for managing shared grocery/shopping lists. It connects to a Spring Boot REST backend (documented in `flutter-backend-integration.md`) and supports creating lists, managing items, and inviting members to collaborate.
+Share Cart is a Flutter mobile application for managing shared grocery/shopping lists.
+It integrates with a Spring Boot backend over REST and WebSocket, supports JWT auth,
+and includes invite-by-link, QR invite sharing, and deep-link based list joining.
 
 ---
 
@@ -11,164 +13,204 @@ Share Cart is a Flutter mobile application for managing shared grocery/shopping 
 - **Flutter** with Dart
 - **Provider** for state management
 - **http** package for REST API calls
-- **shared_preferences** for local persistence
+- **shared_preferences** for local persistence support
 - **flutter_secure_storage** for secure JWT token storage
 - **web_socket_channel** for real-time WebSocket sync
+- **app_links** for deep-link handling
+- **share_plus** for native share sheet integration
+- **qr_flutter** for QR rendering
+- **mobile_scanner** for QR scanning
 - **Material 3** design system
 
 ---
 
 ## Project Structure
 
-```
+```text
 lib/
-├── main.dart                          # Entry point — bootstraps dependencies
+├── main.dart                          # Entry point and dependency graph wiring
 ├── app.dart                           # MaterialApp with Material 3 theming
 ├── config/
-│   └── api_config.dart                # Platform-aware base URL selection
+│   └── api_config.dart                # Platform-aware local/prod URL selection + timeouts
 ├── models/
-│   ├── models.dart                        # Barrel export
-│   ├── shopping_list_model.dart           # Shopping list with items and members
-│   ├── shopping_list_summary_model.dart   # Lightweight list summary
-│   ├── item_model.dart                    # Shopping list item
-│   ├── member_model.dart                  # List member
-│   ├── auth_response_model.dart           # JWT login/register response
-│   ├── list_realtime_event_model.dart     # WebSocket real-time event payload
-│   └── api_error_model.dart               # Backend error response
+│   ├── models.dart                    # Barrel export
+│   ├── shopping_list_model.dart
+│   ├── shopping_list_summary_model.dart
+│   ├── item_model.dart
+│   ├── member_model.dart
+│   ├── auth_response_model.dart
+│   ├── list_realtime_event_model.dart
+│   ├── api_error_model.dart
+│   ├── invite_link_response_model.dart
+│   ├── accept_invite_response_model.dart
+│   └── invite_preview_model.dart
 ├── services/
-│   ├── services.dart                      # Barrel export
-│   ├── api_client.dart                    # HTTP client with JWT headers & error mapping
-│   ├── auth_api_service.dart              # Login and register API calls
-│   ├── shopping_list_api_service.dart     # List and invite API calls
-│   ├── item_api_service.dart              # Item CRUD API calls
-│   └── realtime_sync_service.dart         # WebSocket connection for live list updates
+│   ├── services.dart
+│   ├── api_client.dart
+│   ├── auth_api_service.dart
+│   ├── shopping_list_api_service.dart
+│   ├── item_api_service.dart
+│   ├── invite_api_service.dart
+│   ├── pending_invite_service.dart
+│   └── realtime_sync_service.dart
 ├── repositories/
-│   ├── shopping_list_repository.dart      # Combines API + local persistence
-│   ├── auth_repository.dart               # Auth logic + token lifecycle
-│   └── auth_session_repository.dart       # Secure token read/write (flutter_secure_storage)
+│   ├── shopping_list_repository.dart
+│   ├── auth_repository.dart
+│   └── auth_session_repository.dart
 ├── providers/
-│   ├── auth_provider.dart                 # Auth state (logged in/out, current user)
-│   ├── home_provider.dart                 # State for home screen (saved lists)
-│   └── list_detail_provider.dart          # State for list detail screen
+│   ├── auth_provider.dart
+│   ├── home_provider.dart
+│   └── list_detail_provider.dart
 └── screens/
     ├── auth/
-    │   ├── auth_gate.dart                 # Redirects to login or home based on auth state
-    │   ├── login_screen.dart              # Login form
-    │   └── register_screen.dart           # Registration form
+    │   ├── auth_gate.dart
+    │   ├── login_screen.dart
+    │   └── register_screen.dart
     ├── home/
-    │   ├── home_screen.dart               # Main screen with list of saved lists
+    │   ├── home_screen.dart
     │   └── widgets/
-    │       ├── create_list_dialog.dart    # Dialog to create a new shopping list
-    │       └── open_list_dialog.dart      # Dialog to open a list by ID
+    │       ├── create_list_dialog.dart
+    │       └── open_list_dialog.dart
+    ├── invite/
+    │   ├── invite_preview_screen.dart
+    │   ├── invite_qr_widget.dart
+    │   └── scan_qr_screen.dart
     └── list_detail/
-        ├── list_detail_screen.dart        # Shows items and actions for a list
+        ├── list_detail_screen.dart
         └── widgets/
-            ├── item_tile.dart             # Single item row with checkbox and swipe
-            ├── add_item_sheet.dart        # Bottom sheet for add and edit item
-            ├── invite_member_sheet.dart   # Bottom sheet to invite a user
-            └── members_sheet.dart         # Bottom sheet showing current members
+            ├── item_tile.dart
+            ├── add_item_sheet.dart
+            ├── invite_member_sheet.dart
+            └── members_sheet.dart
 ```
 
 ---
 
 ## Layered Architecture
 
-```
-┌─────────────────────────────┐
-│          Screens (UI)       │   Flutter widgets, user interaction
-├─────────────────────────────┤
-│        Providers (State)    │   ChangeNotifier classes via Provider
-├─────────────────────────────┤
-│       Repository            │   Combines API calls + local storage
-├─────────────────────────────┤
-│      API Services           │   One service per backend module
-├─────────────────────────────┤
-│       API Client            │   Single HTTP client, error handling
-└─────────────────────────────┘
+```text
+Screens (UI) -> Providers (State) -> Repository -> API Services -> ApiClient
 ```
 
-Each layer only depends on the layer directly below it. This separation makes it straightforward to:
-
-- Swap the HTTP client or add interceptors without touching UI code
-- Add caching or offline support at the repository layer
-- Test providers with mock repositories
+- **Screens**: Widgets and user interaction flows.
+- **Providers**: `ChangeNotifier` state and async actions.
+- **Repository**: Coordinates list/item APIs and app-side persistence where needed.
+- **Services**: Per-domain API methods.
+- **ApiClient**: Centralized headers, auth token injection, timeout, and error mapping.
 
 ---
 
 ## Dependency Injection
 
-Dependencies are wired up in `main.dart` and provided down the widget tree using Provider:
+Dependencies are wired in `main.dart` with `MultiProvider`:
 
-1. `SharedPreferences`, `FlutterSecureStorage`, `ApiClient`, API services, repositories, and providers are created in `main()`.
-2. At the root, `MultiProvider` provides: `AuthSessionRepository` (as `ChangeNotifierProvider`), `AuthRepository`, `ShoppingListRepository`, `RealtimeSyncService`, and `AuthProvider`.
-3. `AuthGate` at the root listens to `AuthProvider` — shows a splash while bootstrapping, redirects to `LoginScreen` if unauthenticated, or creates `HomeProvider` and renders `HomeScreen` if authenticated.
-4. `ListDetailProvider` is scoped to each `ListDetailScreen` instance.
+1. Initialize `SharedPreferences`, `FlutterSecureStorage`, and `ApiClient`.
+2. Create API services (`AuthApiService`, `ShoppingListApiService`, `ItemApiService`, `InviteApiService`).
+3. Create repositories (`AuthSessionRepository`, `AuthRepository`, `ShoppingListRepository`).
+4. Create cross-cutting services (`RealtimeSyncService`, `PendingInviteService`).
+5. Provide them at root and create `AuthProvider` from repository dependencies.
+6. `AuthGate` builds authenticated flow and can resume pending invite-token navigation.
 
 ---
 
 ## Data Models
 
-| Model                        | Purpose                                               |
-|------------------------------|-------------------------------------------------------|
-| `ShoppingListModel`          | Full list with nested items and members                |
-| `ShoppingListSummaryModel`   | Lightweight list summary (id, name, counts)            |
-| `ItemModel`                  | A single item in a shopping list                       |
-| `MemberModel`                | A user who is a member of a list                       |
-| `AuthResponseModel`          | JWT access/refresh tokens from login or register       |
-| `ListRealtimeEventModel`     | WebSocket event payload for live list updates          |
-| `ApiErrorModel`              | Structured error response from the backend             |
-
-All models include `fromJson` factory constructors and `toJson` methods. `ItemModel` also has a `copyWith` method for immutable updates.
+| Model | Purpose |
+|---|---|
+| `ShoppingListModel` | Full shopping list with items and members |
+| `ShoppingListSummaryModel` | Summary list row data for home screen |
+| `ItemModel` | Individual list item |
+| `MemberModel` | Membership entry with role metadata |
+| `AuthResponseModel` | JWT auth response payload |
+| `ListRealtimeEventModel` | WebSocket event payload for list refresh |
+| `ApiErrorModel` | Backend error payload mapping |
+| `InviteLinkResponseModel` | Invite-link generation response |
+| `AcceptInviteResponseModel` | Accept-invite response (listId/message) |
+| `InvitePreviewModel` | Public invite preview payload |
 
 ---
 
 ## API Client
 
-`ApiClient` wraps the `http` package and provides:
+`ApiClient` centralizes HTTP behavior:
 
-- `get`, `post`, `put`, `delete` methods returning parsed JSON
-- Automatic `Content-Type`, `Accept`, and `Authorization: Bearer <token>` headers
-- Token injection via an `accessTokenProvider` callback
-- Automatic redirect to login on `401` via an `onUnauthorized` callback
-- Centralized error handling — backend error JSON is parsed into `ApiErrorModel` and thrown as `ApiException`
+- JSON request/response handling for `get`, `post`, `put`, `delete`
+- `getPublic` for unauthenticated endpoints (invite preview)
+- Automatic `Authorization: Bearer <token>` header for protected calls
+- Unauthorized callback trigger on `403`
 - Connection timeout via `ApiConfig.connectionTimeout`
+- Error conversion into `ApiException(ApiErrorModel)`
 
 ---
 
-## Platform-Aware Base URL
+## Environment and URLs
 
-`ApiConfig.baseUrl` automatically selects the correct backend address:
+`ApiConfig` supports local and production targets:
 
-| Platform           | Base URL                          |
-|--------------------|-----------------------------------|
-| Android emulator   | `http://10.0.2.2:8080/api/v1`    |
-| iOS simulator      | `http://127.0.0.1:8080/api/v1`   |
-| Flutter web        | `http://localhost:8080/api/v1`    |
-| Physical device    | Requires manual IP configuration  |
+- `useProductionServer = true` uses Render backend and WSS endpoint.
+- `useProductionServer = false` uses platform-aware localhost variants.
+- Local host mapping:
+  - Android emulator: `10.0.2.2`
+  - iOS/macOS: `127.0.0.1`
+  - Web: `localhost`
+- Current connection/receive timeout constants are `60s`.
 
 ---
 
 ## API Coverage
 
-All backend endpoints are implemented:
+Implemented backend endpoint coverage:
 
-| Action              | Method   | Endpoint                        | Service                      |
-|---------------------|----------|----------------------------------|------------------------------|
-| Register            | `POST`   | `/auth/register`                | `AuthApiService`             |
-| Login               | `POST`   | `/auth/login`                   | `AuthApiService`             |
-| Get my lists        | `GET`    | `/lists/me`                     | `ShoppingListApiService`     |
-| Create list         | `POST`   | `/lists`                        | `ShoppingListApiService`     |
-| Get list by ID      | `GET`    | `/lists/{id}`                   | `ShoppingListApiService`     |
-| Invite user         | `POST`   | `/lists/{id}/invite`            | `ShoppingListApiService`     |
-| Add item            | `POST`   | `/lists/{listId}/items`         | `ItemApiService`             |
-| Update item         | `PUT`    | `/items/{id}`                   | `ItemApiService`             |
-| Delete item         | `DELETE` | `/items/{id}`                   | `ItemApiService`             |
+| Action | Method | Endpoint | Service |
+|---|---|---|---|
+| Register | `POST` | `/auth/register` | `AuthApiService` |
+| Login | `POST` | `/auth/login` | `AuthApiService` |
+| Get my lists | `GET` | `/lists/me` | `ShoppingListApiService` |
+| Create list | `POST` | `/lists` | `ShoppingListApiService` |
+| Get list by ID | `GET` | `/lists/{id}` | `ShoppingListApiService` |
+| Invite by user ID | `POST` | `/lists/{id}/invite` | `ShoppingListApiService` |
+| Generate invite link | `POST` | `/lists/{id}/invite-link` | `InviteApiService` |
+| Invite preview (public) | `GET` | `/invites/{token}` | `InviteApiService` |
+| Accept invite | `POST` | `/invites/{token}/accept` | `InviteApiService` |
+| Add item | `POST` | `/lists/{listId}/items` | `ItemApiService` |
+| Update item | `PUT` | `/items/{id}` | `ItemApiService` |
+| Delete item | `DELETE` | `/items/{id}` | `ItemApiService` |
 
 ---
 
-## Local Persistence
+## Invite, Deep Link, and QR Flow
 
-`SharedPreferences` is initialised in `main()` and injected into `ShoppingListRepository`, but the home screen no longer depends on locally stored list IDs. The home screen is populated by calling `GET /lists/me`, which returns all lists the authenticated user belongs to. `SharedPreferences` is available in the repository for future use (e.g. caching).
+### Invite Link Generation
+
+- Owners can generate invite links from list-detail UI actions.
+- Sharing uses `share_plus` native share sheet.
+
+### Deep Link Handling
+
+- `main.dart` listens for cold-start and in-app links via `app_links`.
+- Supported pattern: `https://sharecart.app/invite/{token}`.
+- If authenticated: navigate directly to `InvitePreviewScreen(token)`.
+- If unauthenticated: store token in `PendingInviteService`.
+- `AuthGate` consumes pending token after login and routes to preview.
+
+### QR Flow
+
+- `InviteQrWidget` renders QR from full invite URL.
+- `ScanQrScreen` scans QR and validates ShareCart invite URL structure.
+- On valid scan: extract token and navigate to `InvitePreviewScreen`.
+
+### Invite Preview + Join
+
+`InvitePreviewScreen`:
+
+- Fetches preview with public endpoint (`getInvitePreview`).
+- Handles join via `acceptInvite`.
+- Handles status outcomes:
+  - `200`: navigate to joined list
+  - `400`: expired invite
+  - `404`: invalid invite
+  - `409`: already member
+  - `403`: redirect to login
 
 ---
 
@@ -176,103 +218,75 @@ All backend endpoints are implemented:
 
 ### AuthProvider
 
-- Manages the authenticated user state (logged in / logged out)
-- Exposes `login`, `register`, and `logout` actions
-- On app start, restores session from `flutter_secure_storage`
-- On `401`, clears tokens and navigates to login via the global navigator key
+- Restores and maintains authenticated session state.
+- Exposes `login`, `register`, and `logout` actions.
 
 ### HomeProvider
 
-- On construction, fetches the user's lists from the backend via `GET /lists/me`
-- Handles create-list and open-by-ID flows
-- Exposes `refresh()` to reload lists from the backend
+- Loads lists from backend (`GET /lists/me`).
+- Supports list creation and explicit refresh.
 
 ### ListDetailProvider
 
-- Scoped to a single list detail screen
-- Provides methods for add, update, toggle-complete, and delete item
-- Provides invite-member functionality
-- Refreshes the full list from the backend after each write operation
-- Connects to `RealtimeSyncService` to receive live WebSocket updates
+- Manages a single list detail context.
+- Handles add/update/toggle/delete item operations.
+- Handles invite-by-userId action.
+- Refreshes list state after write operations.
+- Subscribes to real-time events via `RealtimeSyncService`.
 
 ---
 
-## UI Screens
+## UI Screens (High-Level)
 
-### Auth Gate
-
-- Entry point after `MaterialApp` — checks if the user has a valid JWT session
-- Redirects to `LoginScreen` if unauthenticated, or `HomeScreen` if authenticated
-
-### Login Screen
-
-- Email and password form
-- Links to `RegisterScreen`
-- On success, stores JWT and navigates to home
-
-### Register Screen
-
-- Username, email, and password form
-- On success, stores JWT and navigates to home
-
-### Home Screen
-
-- Displays saved shopping lists as cards with item and member counts
-- Pull-to-refresh reloads all lists from the backend
-- FABs for creating a new list or opening an existing list by ID
-- Swipe or tap the remove icon to remove a list from local view
-
-### List Detail Screen
-
-- Shows items grouped by category
-- Checkbox to toggle item completion
-- Swipe-to-delete with confirmation dialog
-- Edit button on each item opens the add/edit bottom sheet
-- App bar actions: view members, invite member, refresh
-- FAB to add a new item
+- **Auth**: `AuthGate`, `LoginScreen`, `RegisterScreen`
+- **Home**: list overview, refresh, create/open list, QR scan entry action
+- **List Detail**: list items, member management, invite/share actions
+- **Invite**: preview, QR generation widget, QR scan screen
 
 ---
 
-## Theming
+## Local Persistence Notes
 
-- Material 3 with `Colors.green` as the seed color
-- Light and dark themes generated from the seed
-- System theme mode — follows device setting
+- Auth tokens are persisted in secure storage (`flutter_secure_storage`).
+- `SharedPreferences` is still initialized and injected for repository-level persistence support.
+- Home list rendering currently relies on backend `GET /lists/me` as source of truth.
 
 ---
 
 ## Error Handling
 
-Backend errors follow a consistent JSON format. The app maps HTTP status codes to user-facing behavior:
+Backend errors are normalized in `ApiClient` as `ApiException` and surfaced at provider/UI layers.
+Typical status handling used across screens:
 
-| Status | Meaning                          | App Behavior                        |
-|--------|----------------------------------|--------------------------------------|
-| 400    | Validation error                 | Show field-level error message       |
-| 404    | Resource not found               | Show "not found" message             |
-| 409    | Conflict (e.g. duplicate member) | Show business-rule conflict message  |
-| 500    | Server error                     | Show generic error message           |
+| Status | Meaning | UI Behavior |
+|---|---|---|
+| `400` | Validation/expired token | Show contextual message |
+| `403` | Unauthorized/forbidden | Redirect to login or show permission message |
+| `404` | Not found/invalid token | Show not-found or invalid-link message |
+| `409` | Business conflict | Show conflict message and preserve UX flow |
+| `500` | Server error | Show generic retry guidance |
 
 ---
 
-## Running The App
-
-1. Start the Spring Boot backend on port 8080.
-2. Run the Flutter app:
+## Run and Verify
 
 ```bash
 flutter run
 ```
 
-The app auto-detects the platform and uses the appropriate base URL to reach the backend.
+For backend targeting:
+
+- Use `ApiConfig.useProductionServer = true` for deployed Render backend.
+- Use `ApiConfig.useProductionServer = false` for local Spring Boot backend.
 
 ---
 
-## Future Extensibility
+## Extensibility
 
-The architecture is designed to accommodate future features:
+The current architecture supports straightforward growth:
 
-- **New API endpoints**: Add methods to existing services or create new service classes.
-- **Offline support**: Add caching logic in the repository layer.
-- **Additional screens**: Create new screen folders under `lib/screens/` with scoped providers.
-- **Navigation**: Replace simple `Navigator.push` with named routes or a router package when the app grows.
-- **Push notifications**: Hook into the existing real-time event model for background list updates.
+- Add endpoints by extending service classes
+- Add feature screens with scoped providers
+- Add repository caching/offline policies
+- Move to named routes/router package when navigation complexity grows
+- Extend real-time and invite flows without cross-layer coupling
