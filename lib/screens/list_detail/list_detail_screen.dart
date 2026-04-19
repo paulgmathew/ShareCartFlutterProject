@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../../providers/auth_provider.dart';
 import '../../providers/list_detail_provider.dart';
 import '../../repositories/shopping_list_repository.dart';
+import '../../services/api_client.dart';
+import '../../services/invite_api_service.dart';
+import '../../services/realtime_sync_service.dart';
 import 'widgets/add_item_sheet.dart';
 import 'widgets/invite_member_sheet.dart';
 import 'widgets/item_tile.dart';
@@ -17,9 +22,10 @@ class ListDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create:
-          (ctx) =>
-              ListDetailProvider(ctx.read<ShoppingListRepository>())
-                ..loadList(listId),
+          (ctx) => ListDetailProvider(
+            ctx.read<ShoppingListRepository>(),
+            ctx.read<RealtimeSyncService>(),
+          )..loadList(listId),
       child: _ListDetailBody(listId: listId),
     );
   }
@@ -41,6 +47,12 @@ class _ListDetailBody extends StatelessWidget {
             title: Text(list?.name ?? 'Loading...'),
             actions: [
               if (list != null) ...[
+                if (_isOwner(context, list))
+                  IconButton(
+                    icon: const Icon(Icons.share),
+                    tooltip: 'Share invite link',
+                    onPressed: () => _shareInviteLink(context),
+                  ),
                 IconButton(
                   icon: const Icon(Icons.people),
                   tooltip: 'Members',
@@ -175,6 +187,30 @@ class _ListDetailBody extends StatelessWidget {
         },
       ),
     );
+  }
+
+  bool _isOwner(BuildContext context, dynamic list) {
+    final currentUserId = context.read<AuthProvider>().userId;
+    return list.members.any(
+      (m) => m.userId == currentUserId && m.role == 'OWNER',
+    );
+  }
+
+  Future<void> _shareInviteLink(BuildContext context) async {
+    final inviteService = context.read<InviteApiService>();
+    try {
+      final inviteUrl = await inviteService.generateInviteLink(listId);
+      await SharePlus.instance.share(ShareParams(text: inviteUrl));
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      final message =
+          e.error.status == 403
+              ? 'Only the list owner can share this list'
+              : 'Could not generate invite link. Try again.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   void _showAddItemSheet(BuildContext context) {

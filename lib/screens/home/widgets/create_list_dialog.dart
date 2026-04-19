@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import '../../../providers/home_provider.dart';
 import '../../../services/api_client.dart';
 
 class CreateListDialog extends StatefulWidget {
-  const CreateListDialog({super.key});
+  const CreateListDialog({super.key, required this.homeProvider});
+
+  final HomeProvider homeProvider;
 
   @override
   State<CreateListDialog> createState() => _CreateListDialogState();
@@ -32,8 +33,9 @@ class _CreateListDialogState extends State<CreateListDialog> {
     });
 
     try {
-      final provider = context.read<HomeProvider>();
-      final listId = await provider.createList(_nameController.text.trim());
+      final listId = await widget.homeProvider.createList(
+        _nameController.text.trim(),
+      );
       if (mounted) Navigator.pop(context, listId);
     } on ApiException catch (e) {
       setState(() => _error = e.error.message);

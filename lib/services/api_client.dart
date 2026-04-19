@@ -54,6 +54,18 @@ class ApiClient {
     return _handleResponse(response);
   }
 
+  /// GET without Authorization header — for public endpoints.
+  Future<Map<String, dynamic>> getPublic(String path) async {
+    const headers = <String, String>{
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    final response = await _client
+        .get(Uri.parse('$_baseUrl$path'), headers: headers)
+        .timeout(ApiConfig.connectionTimeout);
+    return _handleResponse(response);
+  }
+
   Future<List<dynamic>> getList(String path) async {
     final headers = await _buildHeaders();
     final response = await _client

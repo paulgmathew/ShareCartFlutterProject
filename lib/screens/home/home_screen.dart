@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../models/models.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
+import '../invite/scan_qr_screen.dart';
 import '../list_detail/list_detail_screen.dart';
 import 'widgets/create_list_dialog.dart';
 import 'widgets/open_list_dialog.dart';
@@ -26,6 +27,14 @@ class HomeScreen extends StatelessWidget {
                 ),
               );
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner),
+            tooltip: 'Scan QR to Join',
+            onPressed:
+                () => Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => const ScanQrScreen())),
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -113,13 +122,15 @@ class HomeScreen extends StatelessWidget {
   }
 
   void _showCreateListDialog(BuildContext context) {
-    showDialog(context: context, builder: (_) => const CreateListDialog()).then(
-      (listId) {
-        if (listId != null && context.mounted) {
-          _navigateToDetail(context, listId as String);
-        }
-      },
-    );
+    final homeProvider = context.read<HomeProvider>();
+    showDialog(
+      context: context,
+      builder: (_) => CreateListDialog(homeProvider: homeProvider),
+    ).then((listId) {
+      if (listId != null && context.mounted) {
+        _navigateToDetail(context, listId as String);
+      }
+    });
   }
 
   void _showOpenListDialog(BuildContext context) {

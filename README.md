@@ -20,6 +20,10 @@ Share Cart connects to a [Spring Boot REST backend](docs/flutter-backend-integra
 - **Add, edit, and delete items** — name, quantity, and category
 - **Toggle item completion** with a single tap
 - **Invite members** to collaborate on a list
+- **Invite by shareable link** for list owners
+- **Invite preview + join flow** for invite links
+- **QR-based invites** — generate QR from invite link and scan to join
+- **Deep link handling** for `https://sharecart.app/invite/{token}` links
 - **View members** and their roles
 - **Items grouped by category** on the detail screen
 - **Swipe-to-delete** with confirmation
@@ -27,6 +31,27 @@ Share Cart connects to a [Spring Boot REST backend](docs/flutter-backend-integra
 - **Secure token storage** using `flutter_secure_storage` (not SharedPreferences)
 - **Auto-logout** on 403 — app returns to login screen if token expires
 - **Material 3** theming with automatic light/dark mode
+
+---
+
+## Quick Invite Flow
+
+Use this as a fast test checklist for invite sharing and joining.
+
+1. **Owner opens a list** on the List Detail screen.
+2. Tap **Share** in the app bar, or open **Invite Member** and choose:
+    - **Share Invite Link**, or
+    - **Show QR Code**.
+3. **Member joins** by either:
+    - opening the shared invite link, or
+    - scanning the QR from **Home -> Scan QR to Join**.
+4. App opens the **Invite Preview** screen.
+5. Member taps **Join List**.
+6. On success, app navigates to the joined list detail screen.
+
+Notes:
+- If the user is not logged in, the app stores the pending invite token and resumes after login.
+- Expired/invalid/already-joined states are handled with clear messages.
 
 ---
 
@@ -39,6 +64,10 @@ Share Cart connects to a [Spring Boot REST backend](docs/flutter-backend-integra
 | HTTP Client        | `http` package                   |
 | Local Storage      | `shared_preferences`             |
 | Secure Storage     | `flutter_secure_storage`         |
+| Deep Linking       | `app_links`                      |
+| Sharing            | `share_plus`                     |
+| QR Rendering       | `qr_flutter`                     |
+| QR Scanning        | `mobile_scanner`                 |
 | Design System      | Material 3 with green color seed |
 | Backend            | Spring Boot REST API (JWT)       |
 
@@ -65,13 +94,19 @@ lib/
 │   ├── shopping_list_summary_model.dart
 │   ├── item_model.dart
 │   ├── member_model.dart
+│   ├── invite_link_response_model.dart
+│   ├── accept_invite_response_model.dart
+│   ├── invite_preview_model.dart
 │   └── api_error_model.dart
 ├── services/
 │   ├── services.dart                  # Barrel export
 │   ├── api_client.dart                # HTTP client + Bearer token + error mapping
 │   ├── auth_api_service.dart
 │   ├── shopping_list_api_service.dart
-│   └── item_api_service.dart
+│   ├── item_api_service.dart
+│   ├── invite_api_service.dart
+│   ├── pending_invite_service.dart
+│   └── realtime_sync_service.dart
 ├── repositories/
 │   ├── auth_session_repository.dart   # Secure JWT storage (ChangeNotifier)
 │   ├── auth_repository.dart           # Auth orchestration
@@ -90,6 +125,10 @@ lib/
     │   └── widgets/
     │       ├── create_list_dialog.dart
     │       └── open_list_dialog.dart
+    ├── invite/
+    │   ├── invite_preview_screen.dart
+    │   ├── invite_qr_widget.dart
+    │   └── scan_qr_screen.dart
     └── list_detail/
         ├── list_detail_screen.dart
         └── widgets/
@@ -106,8 +145,8 @@ For a detailed breakdown, see [docs/flutter-app-architecture.md](docs/flutter-ap
 ## Prerequisites
 
 - [Flutter SDK](https://docs.flutter.dev/get-started/install) (^3.7.2)
-- The Share Cart Spring Boot backend running on port **8080**
 - An Android emulator, iOS simulator, or Chrome for web
+- The Share Cart Spring Boot backend — either running locally on port **8080**, or use the deployed Render instance (configured by default)
 
 ---
 
@@ -126,15 +165,25 @@ cd ShareCartFlutterProject
 flutter pub get
 ```
 
-### 3. Start the backend
+### 3. Configure the backend
 
-Make sure the Spring Boot backend is running at `http://localhost:8080`. The app auto-detects the correct base URL per platform:
+Open `lib/config/api_config.dart` and set the `useProductionServer` flag:
 
-| Platform         | Base URL                        |
-|------------------|---------------------------------|
-| Android emulator | `http://10.0.2.2:8080/api/v1`  |
-| iOS simulator    | `http://127.0.0.1:8080/api/v1` |
-| Web (Chrome)     | `http://localhost:8080/api/v1`  |
+```dart
+// true  → uses the deployed Render backend (default)
+// false → uses your local Spring Boot on port 8080
+static const bool useProductionServer = true;
+```
+
+When using **local mode**, the base URL is auto-detected per platform:
+
+| Platform              | Base URL                         |
+|-----------------------|----------------------------------|
+| Android emulator      | `http://10.0.2.2:8080/api/v1`   |
+| iOS simulator / macOS | `http://127.0.0.1:8080/api/v1`  |
+| Web (Chrome)          | `http://localhost:8080/api/v1`   |
+
+See [docs/environment-config.md](docs/environment-config.md) for full details.
 
 ### 4. Run the app
 
@@ -181,6 +230,9 @@ All protected endpoints require an `Authorization: Bearer <token>` header. The t
 | Create list         | `POST`   | Required | `/api/v1/lists`                  |
 | Get list            | `GET`    | Required | `/api/v1/lists/{id}`             |
 | Invite user         | `POST`   | Required | `/api/v1/lists/{id}/invite`      |
+| Generate invite link| `POST`   | Required | `/api/v1/lists/{id}/invite-link` |
+| Invite preview      | `GET`    | Public   | `/api/v1/invites/{token}`        |
+| Accept invite       | `POST`   | Required | `/api/v1/invites/{token}/accept` |
 | Add item            | `POST`   | Required | `/api/v1/lists/{listId}/items`   |
 | Update item         | `PUT`    | Required | `/api/v1/items/{id}`             |
 | Delete item         | `DELETE` | Required | `/api/v1/items/{id}`             |
@@ -193,10 +245,12 @@ Full API contract: [docs/flutter-backend-integration.md](docs/flutter-backend-in
 
 - [x] Authentication and user login/register
 - [x] Home screen loads lists owned by or shared with the user
+- [x] Invite by shareable link + deep link handling
+- [x] QR code invite generation and scanning
+- [x] Real-time sync via WebSockets
 - [ ] User search / discovery for invitations
 - [ ] Delete shopping lists
 - [ ] Offline mode with local caching
-- [ ] Real-time sync via WebSockets
 - [ ] Push notifications for list updates
 - [ ] Unit and widget test coverage
 
@@ -208,6 +262,7 @@ Full API contract: [docs/flutter-backend-integration.md](docs/flutter-backend-in
 |--------------------------------------------------------------------------|--------------------------------------|
 | [Backend Integration Guide](docs/flutter-backend-integration.md)         | Full backend API contract            |
 | [App Architecture](docs/flutter-app-architecture.md)                     | Detailed architecture documentation  |
+| [Environment Config](docs/environment-config.md)                         | Switch between production and local  |
 | [Copilot Instructions](.github/copilot-instructions.md)                  | Coding conventions for AI assistants |
 
 ---

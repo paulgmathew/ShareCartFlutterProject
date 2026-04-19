@@ -1,3 +1,4 @@
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -8,10 +9,15 @@ import 'providers/auth_provider.dart';
 import 'repositories/auth_repository.dart';
 import 'repositories/auth_session_repository.dart';
 import 'repositories/shopping_list_repository.dart';
+import 'screens/invite/invite_preview_screen.dart';
 import 'services/api_client.dart';
 import 'services/auth_api_service.dart';
 import 'services/item_api_service.dart';
+import 'services/invite_api_service.dart';
+import 'services/pending_invite_service.dart';
+import 'services/realtime_sync_service.dart';
 import 'services/shopping_list_api_service.dart';
+import 'config/api_config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,6 +39,32 @@ void main() async {
   final authApiService = AuthApiService(apiClient);
   final listService = ShoppingListApiService(apiClient);
   final itemService = ItemApiService(apiClient);
+  final inviteService = InviteApiService(apiClient);
+  final pendingInviteService = PendingInviteService();
+
+  void handleIncomingLink(Uri uri) {
+    final segments = uri.pathSegments;
+    if (uri.host == 'sharecart.app' &&
+        segments.length >= 2 &&
+        segments[0] == 'invite') {
+      final token = segments.last;
+      if (authRepository.isAuthenticated) {
+        appNavigatorKey.currentState?.push(
+          MaterialPageRoute(builder: (_) => InvitePreviewScreen(token: token)),
+        );
+      } else {
+        pendingInviteService.setToken(token);
+      }
+    }
+  }
+
+  // Handle deep link on cold start
+  final appLinks = AppLinks();
+  final initialLink = await appLinks.getInitialLink();
+  if (initialLink != null) handleIncomingLink(initialLink);
+
+  // Handle deep links while the app is running
+  appLinks.uriLinkStream.listen(handleIncomingLink);
 
   authRepository = AuthRepository(
     authApiService: authApiService,
@@ -45,6 +77,11 @@ void main() async {
     prefs: prefs,
   );
 
+  final realtimeSyncService = RealtimeSyncService(
+    wsUrl: ApiConfig.webSocketUrl,
+    accessTokenProvider: () async => authRepository.getAccessToken(),
+  );
+
   runApp(
     MultiProvider(
       providers: [
@@ -53,6 +90,9 @@ void main() async {
         ),
         Provider<AuthRepository>.value(value: authRepository),
         Provider<ShoppingListRepository>.value(value: repository),
+        Provider<InviteApiService>.value(value: inviteService),
+        Provider<PendingInviteService>.value(value: pendingInviteService),
+        Provider<RealtimeSyncService>.value(value: realtimeSyncService),
         ChangeNotifierProvider(
           create:
               (ctx) => AuthProvider(
