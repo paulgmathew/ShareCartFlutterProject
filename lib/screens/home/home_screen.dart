@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../invite/scan_qr_screen.dart';
 import '../list_detail/list_detail_screen.dart';
+import '../price_scan/price_scan_screen.dart';
 import 'widgets/create_list_dialog.dart';
 import 'widgets/open_list_dialog.dart';
 
@@ -35,6 +36,14 @@ class HomeScreen extends StatelessWidget {
                 () => Navigator.of(
                   context,
                 ).push(MaterialPageRoute(builder: (_) => const ScanQrScreen())),
+          ),
+          IconButton(
+            icon: const Icon(Icons.document_scanner_outlined),
+            tooltip: 'Capture Price',
+            onPressed:
+                () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const PriceScanScreen()),
+                ),
           ),
           IconButton(
             icon: const Icon(Icons.refresh),

@@ -49,5 +49,7 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Camera is used to scan QR codes to join shared lists.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Location is used to suggest nearby stores while capturing prices.</string>
 </dict>
 </plist>

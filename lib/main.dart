@@ -15,6 +15,7 @@ import 'services/auth_api_service.dart';
 import 'services/item_api_service.dart';
 import 'services/invite_api_service.dart';
 import 'services/pending_invite_service.dart';
+import 'services/price_api_service.dart';
 import 'services/realtime_sync_service.dart';
 import 'services/shopping_list_api_service.dart';
 import 'config/api_config.dart';
@@ -40,6 +41,7 @@ void main() async {
   final listService = ShoppingListApiService(apiClient);
   final itemService = ItemApiService(apiClient);
   final inviteService = InviteApiService(apiClient);
+  final priceService = PriceApiService(apiClient);
   final pendingInviteService = PendingInviteService();
 
   void handleIncomingLink(Uri uri) {
@@ -91,6 +93,7 @@ void main() async {
         Provider<AuthRepository>.value(value: authRepository),
         Provider<ShoppingListRepository>.value(value: repository),
         Provider<InviteApiService>.value(value: inviteService),
+        Provider<PriceApiService>.value(value: priceService),
         Provider<PendingInviteService>.value(value: pendingInviteService),
         Provider<RealtimeSyncService>.value(value: realtimeSyncService),
         ChangeNotifierProvider(
