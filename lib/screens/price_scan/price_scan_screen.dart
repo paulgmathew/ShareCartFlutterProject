@@ -3,8 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/receipt_extraction_model.dart';
 import '../../providers/price_provider.dart';
 import '../../services/price_api_service.dart';
+import '../../services/receipt_extraction_api_service.dart';
 
 class PriceScanScreen extends StatelessWidget {
   const PriceScanScreen({super.key});
@@ -12,7 +14,11 @@ class PriceScanScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (ctx) => PriceProvider(ctx.read<PriceApiService>()),
+      create:
+          (ctx) => PriceProvider(
+            ctx.read<ReceiptExtractionApiService>(),
+            ctx.read<PriceApiService>(),
+          ),
       child: const _PriceScanBody(),
     );
   }
@@ -31,6 +37,7 @@ class _PriceScanBodyState extends State<_PriceScanBody> {
   final _priceController = TextEditingController();
   final _unitController = TextEditingController();
   final _storeController = TextEditingController();
+  ReceiptScanType _scanType = ReceiptScanType.receipt;
 
   @override
   void dispose() {
@@ -43,7 +50,7 @@ class _PriceScanBodyState extends State<_PriceScanBody> {
 
   Future<void> _captureAndScan() async {
     final provider = context.read<PriceProvider>();
-    await provider.scanImage();
+    await provider.scanImage(scanType: _scanType);
     if (!mounted) return;
 
     _itemNameController.text = provider.itemNameGuess;
@@ -113,10 +120,32 @@ class _PriceScanBodyState extends State<_PriceScanBody> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  DropdownButtonFormField<ReceiptScanType>(
+                    value: _scanType,
+                    decoration: const InputDecoration(
+                      labelText: 'Scan Type',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: ReceiptScanType.receipt,
+                        child: Text('Receipt'),
+                      ),
+                      DropdownMenuItem(
+                        value: ReceiptScanType.priceTag,
+                        child: Text('Price Tag'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _scanType = value);
+                    },
+                  ),
+                  const SizedBox(height: 12),
                   FilledButton.icon(
                     onPressed: provider.loading ? null : _captureAndScan,
                     icon: const Icon(Icons.camera_alt),
-                    label: const Text('Capture Receipt / Price Tag'),
+                    label: const Text('Capture with AI'),
                   ),
                   const SizedBox(height: 12),
                   if (provider.imagePath != null)
@@ -135,7 +164,7 @@ class _PriceScanBodyState extends State<_PriceScanBody> {
                       child: Center(child: CircularProgressIndicator()),
                     ),
                   Text(
-                    'Detected OCR Text',
+                    'AI Extracted Summary',
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                   const SizedBox(height: 8),
@@ -147,11 +176,51 @@ class _PriceScanBodyState extends State<_PriceScanBody> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      provider.ocrText.isEmpty
-                          ? 'No OCR text yet. Capture an image to begin.'
-                          : provider.ocrText,
+                      provider.extractedText.isEmpty
+                          ? 'No image processed yet. Capture a receipt or price tag to begin.'
+                          : provider.extractedText,
                     ),
                   ),
+                  if (provider.extractedItems.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      'Extracted Items',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    Card(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: provider.extractedItems.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final item = provider.extractedItems[index];
+                          return ListTile(
+                            title: Text(item.name),
+                            subtitle: Text(
+                              [
+                                if (item.quantity != null &&
+                                    item.quantity!.trim().isNotEmpty)
+                                  'Qty: ${item.quantity!.trim()}',
+                                if (item.unit != null &&
+                                    item.unit!.trim().isNotEmpty)
+                                  'Unit: ${item.unit!.trim()}',
+                                if (item.confidence != null)
+                                  'Confidence: ${item.confidence!.toStringAsFixed(2)}',
+                              ].join(' · '),
+                            ),
+                            trailing:
+                                item.price == null
+                                    ? null
+                                    : Text(
+                                      '\$${item.price!.toStringAsFixed(2)}',
+                                    ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   Form(
                     key: _formKey,

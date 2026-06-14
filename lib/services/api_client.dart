@@ -46,6 +46,19 @@ class ApiClient {
     return headers;
   }
 
+  Future<Map<String, String>> _buildMultipartHeaders() async {
+    final headers = <String, String>{'Accept': 'application/json'};
+
+    if (_accessTokenProvider != null) {
+      final token = await _accessTokenProvider();
+      if (token != null && token.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $token';
+      }
+    }
+
+    return headers;
+  }
+
   Future<Map<String, dynamic>> get(String path) async {
     final headers = await _buildHeaders();
     final response = await _client
@@ -93,6 +106,35 @@ class ApiClient {
     return _handleResponse(response);
   }
 
+  Future<Map<String, dynamic>> postMultipart(
+    String path, {
+    required Map<String, String> fields,
+    String? fileField,
+    String? filePath,
+    String? fileName,
+  }) async {
+    final headers = await _buildMultipartHeaders();
+    final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl$path'));
+    request.headers.addAll(headers);
+    request.fields.addAll(fields);
+
+    if (fileField != null && filePath != null && filePath.isNotEmpty) {
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          fileField,
+          filePath,
+          filename: fileName,
+        ),
+      );
+    }
+
+    final streamedResponse = await request.send().timeout(
+      ApiConfig.connectionTimeout,
+    );
+    final response = await http.Response.fromStream(streamedResponse);
+    return _handleResponse(response);
+  }
+
   Future<Map<String, dynamic>> put(
     String path, {
     Map<String, dynamic>? body,
@@ -127,7 +169,8 @@ class ApiClient {
   }
 
   Future<Never> _throwApiException(http.Response response) async {
-    if (response.statusCode == 403 && _onUnauthorized != null) {
+    if ((response.statusCode == 401 || response.statusCode == 403) &&
+        _onUnauthorized != null) {
       await _onUnauthorized();
     }
 

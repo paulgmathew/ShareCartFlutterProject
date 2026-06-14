@@ -2,11 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../models/receipt_extraction_model.dart';
 import '../services/api_client.dart';
 import '../services/price_api_service.dart';
+import '../services/receipt_extraction_api_service.dart';
 
 class NearbyStoreOption {
   final String name;
@@ -26,17 +27,24 @@ double? extractPrice(String text) {
 }
 
 class PriceProvider extends ChangeNotifier {
+  final ReceiptExtractionApiService _receiptExtractionApiService;
   final PriceApiService _priceApiService;
   final ImagePicker _imagePicker;
 
-  PriceProvider(this._priceApiService, {ImagePicker? imagePicker})
-    : _imagePicker = imagePicker ?? ImagePicker();
+  PriceProvider(
+    this._receiptExtractionApiService,
+    this._priceApiService, {
+    ImagePicker? imagePicker,
+  }) : _imagePicker = imagePicker ?? ImagePicker();
 
   bool _loading = false;
   bool get loading => _loading;
 
-  String _ocrText = '';
-  String get ocrText => _ocrText;
+  String _extractedText = '';
+  String get extractedText => _extractedText;
+
+  List<ReceiptExtractionItemModel> _extractedItems = [];
+  List<ReceiptExtractionItemModel> get extractedItems => _extractedItems;
 
   double? _detectedPrice;
   double? get detectedPrice => _detectedPrice;
@@ -67,7 +75,9 @@ class PriceProvider extends ChangeNotifier {
   List<NearbyStoreOption> _nearbyStores = [];
   List<NearbyStoreOption> get nearbyStores => _nearbyStores;
 
-  Future<void> scanImage() async {
+  Future<void> scanImage({
+    ReceiptScanType scanType = ReceiptScanType.receipt,
+  }) async {
     _setLoading(true);
     _errorMessage = null;
     _compareMessage = null;
@@ -83,10 +93,25 @@ class PriceProvider extends ChangeNotifier {
       }
 
       _imagePath = picked.path;
-      await runOCR();
-      parsePrice();
+      final extraction = await _receiptExtractionApiService.extractReceipt(
+        imagePath: picked.path,
+        scanType: scanType,
+        latitude: _latitude,
+        longitude: _longitude,
+      );
+
+      _applyExtraction(extraction);
+      if (!extraction.success) {
+        return;
+      }
       await fetchNearbyStores();
-      await _captureRawText();
+      await _captureExtractionSummary();
+    } on ApiException catch (e) {
+      _errorMessage = _messageForApiException(e);
+    } on PermissionDeniedException catch (e) {
+      _errorMessage = e.message;
+    } on FormatException catch (e) {
+      _errorMessage = e.message;
     } catch (_) {
       _errorMessage = 'Could not capture image. Please try again.';
     } finally {
@@ -94,28 +119,31 @@ class PriceProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> runOCR() async {
-    final imagePath = _imagePath;
-    if (imagePath == null || imagePath.isEmpty) return;
+  void _applyExtraction(ReceiptExtractionResultModel extraction) {
+    _extractedText = extraction.displayText;
+    _extractedItems = extraction.items;
 
-    final inputImage = InputImage.fromFilePath(imagePath);
-    final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
-
-    try {
-      final recognizedText = await recognizer.processImage(inputImage);
-      _ocrText = recognizedText.text.trim();
-      _itemNameGuess = _guessItemName(_ocrText);
-      notifyListeners();
-    } catch (_) {
-      _errorMessage = 'OCR failed. Please retake the photo.';
-      notifyListeners();
-    } finally {
-      recognizer.close();
+    if (!extraction.success) {
+      _errorMessage =
+          extraction.message ?? 'Unable to confidently extract grocery items.';
     }
-  }
 
-  void parsePrice() {
-    _detectedPrice = extractPrice(_ocrText);
+    final primaryItem = extraction.primaryItem;
+    if (primaryItem != null) {
+      _itemNameGuess = primaryItem.name.trim();
+      _detectedPrice = primaryItem.price;
+    } else {
+      _itemNameGuess = '';
+      double? extractedPrice;
+      for (final item in extraction.items) {
+        if (item.price != null) {
+          extractedPrice = item.price;
+          break;
+        }
+      }
+      _detectedPrice = extractedPrice;
+    }
+
     notifyListeners();
   }
 
@@ -173,11 +201,11 @@ class PriceProvider extends ChangeNotifier {
         throw const FormatException('Please enter a valid numeric price.');
       }
 
-      _captureId ??= await _captureRawText();
+      _captureId ??= await _captureExtractionSummary();
       final captureId = _captureId;
       if (captureId == null || captureId.isEmpty) {
         throw const FormatException(
-          'Could not capture OCR text. Please rescan.',
+          'Could not capture AI extraction. Please rescan.',
         );
       }
 
@@ -211,7 +239,7 @@ class PriceProvider extends ChangeNotifier {
         }
       }
     } on ApiException catch (e) {
-      _errorMessage = e.error.message;
+      _errorMessage = _messageForApiException(e);
     } on PermissionDeniedException catch (e) {
       _errorMessage = e.message;
     } on FormatException catch (e) {
@@ -234,9 +262,9 @@ class PriceProvider extends ChangeNotifier {
   }
 
   Future<String?> _captureRawText() async {
-    if (_ocrText.trim().isEmpty) return null;
+    if (_extractedText.trim().isEmpty) return null;
     final response = await _priceApiService.capturePrice(
-      rawText: _ocrText,
+      rawText: _extractedText,
       imageUrl: _imagePath,
       latitude: _latitude,
       longitude: _longitude,
@@ -249,6 +277,8 @@ class PriceProvider extends ChangeNotifier {
     notifyListeners();
     return _captureId;
   }
+
+  Future<String?> _captureExtractionSummary() => _captureRawText();
 
   Future<Position> _getCurrentPosition() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -275,24 +305,6 @@ class PriceProvider extends ChangeNotifier {
     );
   }
 
-  String _guessItemName(String text) {
-    final lines = text
-        .split('\n')
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList(growable: false);
-
-    for (final line in lines) {
-      final hasAlphabet = RegExp(r'[A-Za-z]').hasMatch(line);
-      final hasPrice = RegExp(r'\$?\d+(\.\d{1,2})?').hasMatch(line);
-      if (hasAlphabet && !hasPrice && line.length <= 60) {
-        return line;
-      }
-    }
-
-    return lines.isNotEmpty ? lines.first : '';
-  }
-
   String? _distanceLabelFrom(Map<String, dynamic> json) {
     final distance = json['distance'];
     if (distance is num) {
@@ -307,6 +319,13 @@ class PriceProvider extends ChangeNotifier {
   void _setLoading(bool value) {
     _loading = value;
     notifyListeners();
+  }
+
+  String _messageForApiException(ApiException exception) {
+    if (exception.error.status == 401 || exception.error.status == 403) {
+      return 'Your session expired. Please log in again.';
+    }
+    return exception.error.message;
   }
 }
 

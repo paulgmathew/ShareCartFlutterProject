@@ -15,11 +15,14 @@ and includes invite-by-link, QR invite sharing, and deep-link based list joining
 - **http** package for REST API calls
 - **shared_preferences** for local persistence support
 - **flutter_secure_storage** for secure JWT token storage
-- **web_socket_channel** for real-time WebSocket sync
+- **stomp_dart_client** for STOMP-based real-time WebSocket sync
 - **app_links** for deep-link handling
 - **share_plus** for native share sheet integration
 - **qr_flutter** for QR rendering
 - **mobile_scanner** for QR scanning
+- **image_picker** for receipt/price-tag image capture
+- **google_mlkit_text_recognition** for OCR text extraction
+- **geolocator** for nearby-store lookup and location-aware price submissions
 - **Material 3** design system
 
 ---
@@ -51,6 +54,7 @@ lib/
 │   ├── shopping_list_api_service.dart
 │   ├── item_api_service.dart
 │   ├── invite_api_service.dart
+│   ├── price_api_service.dart
 │   ├── pending_invite_service.dart
 │   └── realtime_sync_service.dart
 ├── repositories/
@@ -60,7 +64,8 @@ lib/
 ├── providers/
 │   ├── auth_provider.dart
 │   ├── home_provider.dart
-│   └── list_detail_provider.dart
+│   ├── list_detail_provider.dart
+│   └── price_provider.dart
 └── screens/
     ├── auth/
     │   ├── auth_gate.dart
@@ -75,13 +80,15 @@ lib/
     │   ├── invite_preview_screen.dart
     │   ├── invite_qr_widget.dart
     │   └── scan_qr_screen.dart
-    └── list_detail/
-        ├── list_detail_screen.dart
-        └── widgets/
-            ├── item_tile.dart
-            ├── add_item_sheet.dart
-            ├── invite_member_sheet.dart
-            └── members_sheet.dart
+    ├── list_detail/
+    │   ├── list_detail_screen.dart
+    │   └── widgets/
+    │       ├── item_tile.dart
+    │       ├── add_item_sheet.dart
+    │       ├── invite_member_sheet.dart
+    │       └── members_sheet.dart
+    └── price_scan/
+      └── price_scan_screen.dart
 ```
 
 ---
@@ -98,6 +105,9 @@ Screens (UI) -> Providers (State) -> Repository -> API Services -> ApiClient
 - **Services**: Per-domain API methods.
 - **ApiClient**: Centralized headers, auth token injection, timeout, and error mapping.
 
+Note: Most flows follow this structure end-to-end. The current price-capture feature uses
+`PriceProvider -> PriceApiService -> ApiClient` directly and does not yet have a repository layer.
+
 ---
 
 ## Dependency Injection
@@ -105,7 +115,7 @@ Screens (UI) -> Providers (State) -> Repository -> API Services -> ApiClient
 Dependencies are wired in `main.dart` with `MultiProvider`:
 
 1. Initialize `SharedPreferences`, `FlutterSecureStorage`, and `ApiClient`.
-2. Create API services (`AuthApiService`, `ShoppingListApiService`, `ItemApiService`, `InviteApiService`).
+2. Create API services (`AuthApiService`, `ShoppingListApiService`, `ItemApiService`, `InviteApiService`, `PriceApiService`).
 3. Create repositories (`AuthSessionRepository`, `AuthRepository`, `ShoppingListRepository`).
 4. Create cross-cutting services (`RealtimeSyncService`, `PendingInviteService`).
 5. Provide them at root and create `AuthProvider` from repository dependencies.
@@ -175,6 +185,10 @@ Implemented backend endpoint coverage:
 | Add item | `POST` | `/lists/{listId}/items` | `ItemApiService` |
 | Update item | `PUT` | `/items/{id}` | `ItemApiService` |
 | Delete item | `DELETE` | `/items/{id}` | `ItemApiService` |
+| Capture raw OCR text | `POST` | `/prices/capture` | `PriceApiService` |
+| Confirm extracted price | `POST` | `/prices/confirm` | `PriceApiService` |
+| Compare submitted price | `POST` | `/prices/compare` | `PriceApiService` |
+| Nearby stores by location | `GET` | `/stores/nearby?lat={lat}&lon={lon}` | `PriceApiService` |
 
 ---
 
@@ -234,6 +248,14 @@ Implemented backend endpoint coverage:
 - Refreshes list state after write operations.
 - Subscribes to real-time events via `RealtimeSyncService`.
 
+### PriceProvider
+
+- Captures image input using camera (`ImagePicker`).
+- Runs OCR using ML Kit Text Recognition (`google_mlkit_text_recognition`).
+- Guesses item name and parses detected price from OCR text.
+- Fetches nearby stores using current GPS coordinates.
+- Submits raw capture and confirmed price via `PriceApiService`.
+
 ---
 
 ## UI Screens (High-Level)
@@ -242,13 +264,14 @@ Implemented backend endpoint coverage:
 - **Home**: list overview, refresh, create/open list, QR scan entry action
 - **List Detail**: list items, member management, invite/share actions
 - **Invite**: preview, QR generation widget, QR scan screen
+- **Price Scan**: receipt/price-tag capture, OCR text preview, price confirmation, nearby stores
 
 ---
 
 ## Local Persistence Notes
 
 - Auth tokens are persisted in secure storage (`flutter_secure_storage`).
-- `SharedPreferences` is still initialized and injected for repository-level persistence support.
+- `SharedPreferences` is initialized and injected into `ShoppingListRepository`; list persistence logic is not yet actively used.
 - Home list rendering currently relies on backend `GET /lists/me` as source of truth.
 
 ---
