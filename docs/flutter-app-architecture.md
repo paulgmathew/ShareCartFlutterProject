@@ -21,7 +21,7 @@ and includes invite-by-link, QR invite sharing, and deep-link based list joining
 - **qr_flutter** for QR rendering
 - **mobile_scanner** for QR scanning
 - **image_picker** for receipt/price-tag image capture
-- **google_mlkit_text_recognition** for OCR text extraction
+- **ShareCart AI Service** (`/receipt/extract`) for receipt/price-tag extraction
 - **geolocator** for nearby-store lookup and location-aware price submissions
 - **Material 3** design system
 
@@ -46,7 +46,8 @@ lib/
 │   ├── api_error_model.dart
 │   ├── invite_link_response_model.dart
 │   ├── accept_invite_response_model.dart
-│   └── invite_preview_model.dart
+│   ├── invite_preview_model.dart
+│   └── receipt_extraction_model.dart
 ├── services/
 │   ├── services.dart
 │   ├── api_client.dart
@@ -55,6 +56,7 @@ lib/
 │   ├── item_api_service.dart
 │   ├── invite_api_service.dart
 │   ├── price_api_service.dart
+│   ├── receipt_extraction_api_service.dart
 │   ├── pending_invite_service.dart
 │   └── realtime_sync_service.dart
 ├── repositories/
@@ -106,7 +108,7 @@ Screens (UI) -> Providers (State) -> Repository -> API Services -> ApiClient
 - **ApiClient**: Centralized headers, auth token injection, timeout, and error mapping.
 
 Note: Most flows follow this structure end-to-end. The current price-capture feature uses
-`PriceProvider -> PriceApiService -> ApiClient` directly and does not yet have a repository layer.
+`PriceProvider -> ReceiptExtractionApiService + PriceApiService -> ApiClient` directly and does not yet have a repository layer.
 
 ---
 
@@ -114,12 +116,15 @@ Note: Most flows follow this structure end-to-end. The current price-capture fea
 
 Dependencies are wired in `main.dart` with `MultiProvider`:
 
-1. Initialize `SharedPreferences`, `FlutterSecureStorage`, and `ApiClient`.
-2. Create API services (`AuthApiService`, `ShoppingListApiService`, `ItemApiService`, `InviteApiService`, `PriceApiService`).
-3. Create repositories (`AuthSessionRepository`, `AuthRepository`, `ShoppingListRepository`).
-4. Create cross-cutting services (`RealtimeSyncService`, `PendingInviteService`).
-5. Provide them at root and create `AuthProvider` from repository dependencies.
-6. `AuthGate` builds authenticated flow and can resume pending invite-token navigation.
+1. Initialize `SharedPreferences`, `FlutterSecureStorage`, and `ApiClient` instances.
+2. Create API clients:
+  - main backend client (`ApiConfig.baseUrl`)
+  - AI extraction client (`ApiConfig.aiBaseUrl`)
+3. Create API services (`AuthApiService`, `ShoppingListApiService`, `ItemApiService`, `InviteApiService`, `PriceApiService`, `ReceiptExtractionApiService`).
+4. Create repositories (`AuthSessionRepository`, `AuthRepository`, `ShoppingListRepository`).
+5. Create cross-cutting services (`RealtimeSyncService`, `PendingInviteService`).
+6. Provide them at root and create `AuthProvider` from repository dependencies.
+7. `AuthGate` builds authenticated flow and can resume pending invite-token navigation.
 
 ---
 
@@ -137,6 +142,9 @@ Dependencies are wired in `main.dart` with `MultiProvider`:
 | `InviteLinkResponseModel` | Invite-link generation response |
 | `AcceptInviteResponseModel` | Accept-invite response (listId/message) |
 | `InvitePreviewModel` | Public invite preview payload |
+| `ReceiptExtractionResultModel` | AI extraction payload (`success`, `storeName`, `confidence`, `scanType`, `items`) |
+| `ReceiptExtractionItemModel` | AI extracted item row (`name`, `price`, `quantity`, `unit`, `confidence`) |
+| `ReceiptScanType` | Extraction mode enum (`RECEIPT`, `PRICE_TAG`) |
 
 ---
 
@@ -145,9 +153,10 @@ Dependencies are wired in `main.dart` with `MultiProvider`:
 `ApiClient` centralizes HTTP behavior:
 
 - JSON request/response handling for `get`, `post`, `put`, `delete`
+- Multipart upload handling via `postMultipart` (used by AI image extraction)
 - `getPublic` for unauthenticated endpoints (invite preview)
 - Automatic `Authorization: Bearer <token>` header for protected calls
-- Unauthorized callback trigger on `403`
+- Unauthorized callback trigger on `401` and `403`
 - Connection timeout via `ApiConfig.connectionTimeout`
 - Error conversion into `ApiException(ApiErrorModel)`
 
@@ -157,12 +166,17 @@ Dependencies are wired in `main.dart` with `MultiProvider`:
 
 `ApiConfig` supports local and production targets:
 
-- `useProductionServer = true` uses Render backend and WSS endpoint.
+- `useProductionServer = true` uses:
+  - Spring backend: `https://sharecartspringbootproject.onrender.com/api/v1`
+  - AI backend: `https://sharecart-ai-services.onrender.com/api/v1`
+  - WebSocket: `wss://sharecartspringbootproject.onrender.com/ws`
 - `useProductionServer = false` uses platform-aware localhost variants.
 - Local host mapping:
-  - Android emulator: `10.0.2.2`
-  - iOS/macOS: `127.0.0.1`
-  - Web: `localhost`
+  - Spring backend uses port `8080`
+  - AI backend uses port `8000`
+  - Android emulator host: `10.0.2.2`
+  - iOS/macOS host: `127.0.0.1`
+  - Web host: `localhost`
 - Current connection/receive timeout constants are `60s`.
 
 ---
@@ -185,7 +199,8 @@ Implemented backend endpoint coverage:
 | Add item | `POST` | `/lists/{listId}/items` | `ItemApiService` |
 | Update item | `PUT` | `/items/{id}` | `ItemApiService` |
 | Delete item | `DELETE` | `/items/{id}` | `ItemApiService` |
-| Capture raw OCR text | `POST` | `/prices/capture` | `PriceApiService` |
+| Extract receipt/price-tag items (AI) | `POST` | `/receipt/extract` | `ReceiptExtractionApiService` |
+| Capture raw extraction summary | `POST` | `/prices/capture` | `PriceApiService` |
 | Confirm extracted price | `POST` | `/prices/confirm` | `PriceApiService` |
 | Compare submitted price | `POST` | `/prices/compare` | `PriceApiService` |
 | Nearby stores by location | `GET` | `/stores/nearby?lat={lat}&lon={lon}` | `PriceApiService` |
@@ -251,10 +266,11 @@ Implemented backend endpoint coverage:
 ### PriceProvider
 
 - Captures image input using camera (`ImagePicker`).
-- Runs OCR using ML Kit Text Recognition (`google_mlkit_text_recognition`).
-- Guesses item name and parses detected price from OCR text.
+- Calls AI extraction service (`/receipt/extract`) with `scanType` and image.
+- Stores extraction summary text and full extracted item list.
+- Supports multi-item edit/confirm workflow from extracted rows.
 - Fetches nearby stores using current GPS coordinates.
-- Submits raw capture and confirmed price via `PriceApiService`.
+- Submits captured extraction summary and confirmed price(s) via `PriceApiService`.
 
 ---
 
@@ -264,7 +280,7 @@ Implemented backend endpoint coverage:
 - **Home**: list overview, refresh, create/open list, QR scan entry action
 - **List Detail**: list items, member management, invite/share actions
 - **Invite**: preview, QR generation widget, QR scan screen
-- **Price Scan**: receipt/price-tag capture, OCR text preview, price confirmation, nearby stores
+- **Price Scan**: receipt/price-tag capture, AI extracted summary, multi-item editable rows, batched confirmation, nearby stores
 
 ---
 
@@ -283,6 +299,7 @@ Typical status handling used across screens:
 
 | Status | Meaning | UI Behavior |
 |---|---|---|
+| `401` | Missing/invalid/expired auth token | Clear session and redirect to login or re-auth prompt |
 | `400` | Validation/expired token | Show contextual message |
 | `403` | Unauthorized/forbidden | Redirect to login or show permission message |
 | `404` | Not found/invalid token | Show not-found or invalid-link message |
