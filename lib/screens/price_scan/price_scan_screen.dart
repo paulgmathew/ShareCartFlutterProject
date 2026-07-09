@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/confirm_prices_request_model.dart';
 import '../../models/receipt_extraction_model.dart';
 import '../../providers/price_provider.dart';
 import '../../services/price_api_service.dart';
@@ -50,21 +51,10 @@ class _PriceScanBodyState extends State<_PriceScanBody> {
     await provider.scanImage(scanType: _scanType);
     if (!mounted) return;
 
-    _rebuildEditableItems(provider.extractedItems);
-    _storeController.text = provider.selectedStore ?? '';
-
-    _showErrorIfAny(provider);
-  }
-
-  Future<void> _fetchStores() async {
-    final provider = context.read<PriceProvider>();
-    await provider.fetchNearbyStores();
-    if (!mounted) return;
-
-    if (_storeController.text.trim().isEmpty &&
-        provider.selectedStore != null) {
-      _storeController.text = provider.selectedStore!;
-    }
+    setState(() {
+      _rebuildEditableItems(provider.extractedItems);
+      _storeController.text = provider.storeName ?? '';
+    });
 
     _showErrorIfAny(provider);
   }
@@ -78,44 +68,35 @@ class _PriceScanBodyState extends State<_PriceScanBody> {
       return;
     }
 
-    final validItems = <_EditableExtractedItem>[];
-    for (final item in _editableItems) {
-      final name = item.itemNameController.text.trim();
-      final priceText = item.priceController.text.trim();
-      final unit = item.unitController.text.trim();
-
-      if (name.isEmpty || unit.isEmpty || double.tryParse(priceText) == null) {
+    final confirmedItems = <ConfirmPriceItem>[];
+    for (var index = 0; index < _editableItems.length; index++) {
+      final item = _editableItems[index];
+      if (item.isBlank) {
         continue;
       }
-      validItems.add(item);
+
+      final validationMessage = item.validationMessage();
+      if (validationMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Item ${index + 1}: $validationMessage')),
+        );
+        return;
+      }
+
+      confirmedItems.add(item.toConfirmPriceItem());
     }
 
-    if (validItems.isEmpty) {
+    if (confirmedItems.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Add at least one valid item with name, price, and unit',
-          ),
+          content: Text('Add at least one item before confirming'),
         ),
       );
       return;
     }
 
     final provider = context.read<PriceProvider>();
-    for (var index = 0; index < validItems.length; index++) {
-      final item = validItems[index];
-      await provider.confirmPrice(
-        itemName: item.itemNameController.text,
-        priceText: item.priceController.text,
-        unit: item.unitController.text,
-        storeName: storeName,
-        compareAfterConfirm: index == validItems.length - 1,
-      );
-
-      if (provider.errorMessage != null) {
-        break;
-      }
-    }
+    await provider.confirmPrices(storeName: storeName, items: confirmedItems);
 
     if (!mounted) return;
 
@@ -124,15 +105,8 @@ class _PriceScanBodyState extends State<_PriceScanBody> {
       return;
     }
 
-    final compareText = provider.compareMessage;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          compareText == null
-              ? 'Price confirmed successfully.'
-              : 'Price confirmed. $compareText',
-        ),
-      ),
+      const SnackBar(content: Text('Prices confirmed successfully.')),
     );
   }
 
@@ -140,7 +114,8 @@ class _PriceScanBodyState extends State<_PriceScanBody> {
   Widget build(BuildContext context) {
     return Consumer<PriceProvider>(
       builder: (context, provider, _) {
-        final stores = provider.nearbyStores;
+        final canEditItems =
+            provider.imagePath != null || _editableItems.isNotEmpty;
 
         return Scaffold(
           appBar: AppBar(title: const Text('Capture Price')),
@@ -211,7 +186,7 @@ class _PriceScanBodyState extends State<_PriceScanBody> {
                           : provider.extractedText,
                     ),
                   ),
-                  if (provider.extractedItems.isNotEmpty) ...[
+                  if (canEditItems) ...[
                     const SizedBox(height: 16),
                     Text(
                       'Extracted Items (Editable)',
@@ -230,9 +205,22 @@ class _PriceScanBodyState extends State<_PriceScanBody> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Text(
-                                  'Item ${index + 1}',
-                                  style: Theme.of(context).textTheme.labelLarge,
+                                Row(
+                                  children: [
+                                    Text(
+                                      'Item ${index + 1}',
+                                      style:
+                                          Theme.of(
+                                            context,
+                                          ).textTheme.labelLarge,
+                                    ),
+                                    const Spacer(),
+                                    IconButton(
+                                      tooltip: 'Delete item',
+                                      onPressed: () => _removeItemAt(index),
+                                      icon: const Icon(Icons.delete_outline),
+                                    ),
+                                  ],
                                 ),
                                 const SizedBox(height: 8),
                                 TextField(
@@ -261,14 +249,26 @@ class _PriceScanBodyState extends State<_PriceScanBody> {
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: TextField(
-                                        controller: item.unitController,
+                                        controller: item.quantityController,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
                                         decoration: const InputDecoration(
-                                          labelText: 'Unit',
+                                          labelText: 'Quantity',
                                           border: OutlineInputBorder(),
                                         ),
                                       ),
                                     ),
                                   ],
+                                ),
+                                const SizedBox(height: 8),
+                                TextField(
+                                  controller: item.unitController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Unit',
+                                    border: OutlineInputBorder(),
+                                  ),
                                 ),
                                 if (item.helperText.isNotEmpty) ...[
                                   const SizedBox(height: 8),
@@ -307,53 +307,17 @@ class _PriceScanBodyState extends State<_PriceScanBody> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      DropdownButtonFormField<String>(
-                        value:
-                            stores.any(
-                                  (s) => s.name == _storeController.text.trim(),
-                                )
-                                ? _storeController.text.trim()
-                                : null,
-                        items:
-                            stores
-                                .map(
-                                  (store) => DropdownMenuItem(
-                                    value: store.name,
-                                    child: Text(
-                                      store.distanceLabel == null
-                                          ? store.name
-                                          : '${store.name} (${store.distanceLabel})',
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                        onChanged: (value) {
-                          provider.setSelectedStore(value);
-                          _storeController.text = value ?? '';
-                        },
-                        decoration: const InputDecoration(
-                          labelText: 'Nearby Store (optional)',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: provider.loading ? null : _fetchStores,
-                        icon: const Icon(Icons.my_location),
-                        label: const Text('Refresh Nearby Stores'),
-                      ),
-                      const SizedBox(height: 8),
                       TextFormField(
                         controller: _storeController,
                         decoration: const InputDecoration(
-                          labelText: 'Store (manual)',
+                          labelText: 'Store Name',
                           border: OutlineInputBorder(),
                         ),
                       ),
                       const SizedBox(height: 16),
                       FilledButton(
                         onPressed: provider.loading ? null : _confirm,
-                        child: const Text('Confirm All Valid Items'),
+                        child: const Text('Confirm Prices'),
                       ),
                     ],
                   ),
@@ -383,28 +347,57 @@ class _PriceScanBodyState extends State<_PriceScanBody> {
         .map(_EditableExtractedItem.fromExtraction)
         .toList(growable: false);
   }
+
+  void _removeItemAt(int index) {
+    final item = _editableItems[index];
+    item.dispose();
+    setState(() {
+      final updatedItems = List<_EditableExtractedItem>.from(_editableItems);
+      updatedItems.removeAt(index);
+      _editableItems = updatedItems;
+    });
+  }
 }
 
 class _EditableExtractedItem {
   final TextEditingController itemNameController;
   final TextEditingController priceController;
+  final TextEditingController quantityController;
   final TextEditingController unitController;
   final String helperText;
+  final double? confidence;
+  final bool manuallyAdded;
+  final String _initialItemName;
+  final double? _initialPrice;
+  final int _initialQuantity;
+  final String _initialUnit;
 
   _EditableExtractedItem({
     required this.itemNameController,
     required this.priceController,
+    required this.quantityController,
     required this.unitController,
     required this.helperText,
-  });
+    required this.confidence,
+    required this.manuallyAdded,
+    required String initialItemName,
+    required double? initialPrice,
+    required int initialQuantity,
+    required String initialUnit,
+  }) : _initialItemName = initialItemName,
+       _initialPrice = initialPrice,
+       _initialQuantity = initialQuantity,
+       _initialUnit = initialUnit;
 
   factory _EditableExtractedItem.fromExtraction(
     ReceiptExtractionItemModel item,
   ) {
+    final quantity = _parseQuantity(item.quantity) ?? 1;
+    final unit =
+        (item.unit == null || item.unit!.trim().isEmpty)
+            ? 'each'
+            : item.unit!.trim();
     final helperBits = <String>[];
-    if (item.quantity != null && item.quantity!.trim().isNotEmpty) {
-      helperBits.add('Qty: ${item.quantity!.trim()}');
-    }
     if (item.confidence != null) {
       helperBits.add('Confidence: ${item.confidence!.toStringAsFixed(2)}');
     }
@@ -414,8 +407,17 @@ class _EditableExtractedItem {
       priceController: TextEditingController(
         text: item.price == null ? '' : item.price!.toStringAsFixed(2),
       ),
-      unitController: TextEditingController(text: item.unit ?? 'each'),
+      quantityController: TextEditingController(
+        text: _formatQuantity(quantity),
+      ),
+      unitController: TextEditingController(text: unit),
       helperText: helperBits.join(' · '),
+      confidence: item.confidence,
+      manuallyAdded: false,
+      initialItemName: item.name,
+      initialPrice: item.price,
+      initialQuantity: quantity,
+      initialUnit: unit,
     );
   }
 
@@ -423,14 +425,84 @@ class _EditableExtractedItem {
     return _EditableExtractedItem(
       itemNameController: TextEditingController(),
       priceController: TextEditingController(),
+      quantityController: TextEditingController(text: '1'),
       unitController: TextEditingController(text: 'each'),
       helperText: '',
+      confidence: null,
+      manuallyAdded: true,
+      initialItemName: '',
+      initialPrice: null,
+      initialQuantity: 1,
+      initialUnit: 'each',
     );
+  }
+
+  bool get isBlank =>
+      itemNameController.text.trim().isEmpty &&
+      priceController.text.trim().isEmpty;
+
+  String? validationMessage() {
+    if (isBlank) return null;
+
+    if (itemNameController.text.trim().isEmpty) {
+      return 'Item name is required';
+    }
+
+    final price = double.tryParse(priceController.text.trim());
+    if (price == null) {
+      return 'Enter a valid price';
+    }
+
+    final quantity = _parseQuantity(quantityController.text);
+    if (quantity == null || quantity <= 0) {
+      return 'Enter a valid quantity';
+    }
+
+    if (quantityController.text.trim().contains('.')) {
+      return 'Quantity must be a whole number';
+    }
+
+    if (unitController.text.trim().isEmpty) {
+      return 'Unit is required';
+    }
+
+    return null;
+  }
+
+  ConfirmPriceItem toConfirmPriceItem() {
+    final price = double.parse(priceController.text.trim());
+    final quantity = _parseQuantity(quantityController.text) ?? 1;
+    return ConfirmPriceItem(
+      itemName: itemNameController.text.trim(),
+      price: price,
+      quantity: quantity,
+      unit: unitController.text.trim(),
+      confidence: confidence,
+      edited: manuallyAdded || _hasChanges(price, quantity),
+    );
+  }
+
+  bool _hasChanges(double currentPrice, int currentQuantity) {
+    if (itemNameController.text.trim() != _initialItemName.trim()) return true;
+    if (unitController.text.trim() != _initialUnit.trim()) return true;
+    if ((_initialPrice ?? -1) != currentPrice) return true;
+    return _initialQuantity != currentQuantity;
   }
 
   void dispose() {
     itemNameController.dispose();
     priceController.dispose();
+    quantityController.dispose();
     unitController.dispose();
+  }
+
+  static int? _parseQuantity(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty) return null;
+    return int.tryParse(trimmed);
+  }
+
+  static String _formatQuantity(int quantity) {
+    return quantity.toString();
   }
 }

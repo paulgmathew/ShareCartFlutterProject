@@ -1,30 +1,12 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../models/confirm_prices_request_model.dart';
 import '../models/receipt_extraction_model.dart';
 import '../services/api_client.dart';
 import '../services/price_api_service.dart';
 import '../services/receipt_extraction_api_service.dart';
-
-class NearbyStoreOption {
-  final String name;
-  final String? distanceLabel;
-
-  const NearbyStoreOption({required this.name, this.distanceLabel});
-}
-
-double? extractPrice(String text) {
-  final regex = RegExp(r'\$?\d+(\.\d{1,2})?');
-  final match = regex.firstMatch(text);
-  if (match == null) return null;
-
-  final raw = match.group(0)?.replaceAll(r'$', '');
-  if (raw == null) return null;
-  return double.tryParse(raw);
-}
 
 class PriceProvider extends ChangeNotifier {
   final ReceiptExtractionApiService _receiptExtractionApiService;
@@ -49,8 +31,8 @@ class PriceProvider extends ChangeNotifier {
   double? _detectedPrice;
   double? get detectedPrice => _detectedPrice;
 
-  String? _selectedStore;
-  String? get selectedStore => _selectedStore;
+  String? _storeName;
+  String? get storeName => _storeName;
 
   double? _latitude;
   double? get latitude => _latitude;
@@ -69,18 +51,16 @@ class PriceProvider extends ChangeNotifier {
   String? _errorMessage;
   String? get errorMessage => _errorMessage;
 
-  String? _compareMessage;
-  String? get compareMessage => _compareMessage;
-
-  List<NearbyStoreOption> _nearbyStores = [];
-  List<NearbyStoreOption> get nearbyStores => _nearbyStores;
+  ReceiptScanType _scanType = ReceiptScanType.receipt;
+  ReceiptScanType get scanType => _scanType;
 
   Future<void> scanImage({
     ReceiptScanType scanType = ReceiptScanType.receipt,
   }) async {
     _setLoading(true);
     _errorMessage = null;
-    _compareMessage = null;
+    _scanType = scanType;
+    _captureId = null;
 
     try {
       final picked = await _imagePicker.pickImage(
@@ -93,6 +73,7 @@ class PriceProvider extends ChangeNotifier {
       }
 
       _imagePath = picked.path;
+      await _tryCaptureCurrentPosition();
       final extraction = await _receiptExtractionApiService.extractReceipt(
         imagePath: picked.path,
         scanType: scanType,
@@ -104,12 +85,9 @@ class PriceProvider extends ChangeNotifier {
       if (!extraction.success) {
         return;
       }
-      await fetchNearbyStores();
       await _captureExtractionSummary();
     } on ApiException catch (e) {
       _errorMessage = _messageForApiException(e);
-    } on PermissionDeniedException catch (e) {
-      _errorMessage = e.message;
     } on FormatException catch (e) {
       _errorMessage = e.message;
     } catch (_) {
@@ -122,6 +100,8 @@ class PriceProvider extends ChangeNotifier {
   void _applyExtraction(ReceiptExtractionResultModel extraction) {
     _extractedText = extraction.displayText;
     _extractedItems = extraction.items;
+    _scanType = extraction.scanType;
+    _storeName = extraction.storeName?.trim();
 
     if (!extraction.success) {
       _errorMessage =
@@ -147,58 +127,23 @@ class PriceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> fetchNearbyStores() async {
-    try {
-      final position = await _getCurrentPosition();
-      _latitude = position.latitude;
-      _longitude = position.longitude;
-
-      final stores = await _priceApiService.getNearbyStores(
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
-
-      _nearbyStores = stores
-          .map(
-            (json) => NearbyStoreOption(
-              name: (json['name'] ?? json['storeName'] ?? 'Unknown').toString(),
-              distanceLabel: _distanceLabelFrom(json),
-            ),
-          )
-          .where((s) => s.name.trim().isNotEmpty)
-          .toList(growable: false);
-
-      if (_nearbyStores.isNotEmpty && _selectedStore == null) {
-        _selectedStore = _nearbyStores.first.name;
-      }
-      notifyListeners();
-    } on ApiException catch (e) {
-      _errorMessage = e.error.message;
-      notifyListeners();
-    } on PermissionDeniedException catch (e) {
-      _errorMessage = e.message;
-      notifyListeners();
-    } catch (_) {
-      _errorMessage = 'Could not fetch nearby stores.';
-      notifyListeners();
-    }
-  }
-
-  Future<void> confirmPrice({
-    required String itemName,
-    required String priceText,
-    required String unit,
+  Future<void> confirmPrices({
     required String storeName,
-    bool compareAfterConfirm = true,
+    required List<ConfirmPriceItem> items,
   }) async {
     _setLoading(true);
     _errorMessage = null;
-    _compareMessage = null;
+    _storeName = storeName.trim();
 
     try {
-      final parsedPrice = double.tryParse(priceText.trim());
-      if (parsedPrice == null) {
-        throw const FormatException('Please enter a valid numeric price.');
+      if (_latitude == null || _longitude == null) {
+        _errorMessage =
+            'Location is required to confirm prices. Please enable location services and try again.';
+        return;
+      }
+
+      if (items.isEmpty) {
+        throw const FormatException('Add at least one valid item to confirm.');
       }
 
       _captureId ??= await _captureExtractionSummary();
@@ -209,39 +154,22 @@ class PriceProvider extends ChangeNotifier {
         );
       }
 
-      await _priceApiService.confirmPrice(
+      final request = ConfirmPricesRequest(
         captureId: captureId,
-        itemName: itemName.trim(),
-        price: parsedPrice,
-        unit: unit.trim(),
-        storeName: storeName.trim(),
-        latitude: _latitude,
-        longitude: _longitude,
+        scanType: _scanType,
+        store: StoreInfo(
+          name: _storeName!,
+          latitude: _latitude,
+          longitude: _longitude,
+        ),
+        items: items,
+        source: items.any((item) => item.edited) ? 'MANUAL' : 'OCR',
+        capturedAt: DateTime.now(),
       );
 
-      if (compareAfterConfirm) {
-        final compareResponse = await _priceApiService.comparePrice({
-          'itemName': itemName.trim(),
-          'price': parsedPrice,
-          if (_latitude != null) 'latitude': _latitude,
-          if (_longitude != null) 'longitude': _longitude,
-        });
-
-        final isCheapest = compareResponse['isCheapest'];
-        if (isCheapest == true) {
-          _compareMessage = 'This is the cheapest price so far.';
-        } else {
-          final bestPrice = compareResponse['bestPrice'];
-          _compareMessage =
-              bestPrice != null
-                  ? 'Best known price is $bestPrice.'
-                  : 'Price comparison completed.';
-        }
-      }
+      await _priceApiService.confirmPrices(request);
     } on ApiException catch (e) {
       _errorMessage = _messageForApiException(e);
-    } on PermissionDeniedException catch (e) {
-      _errorMessage = e.message;
     } on FormatException catch (e) {
       _errorMessage = e.message;
     } catch (_) {
@@ -249,11 +177,6 @@ class PriceProvider extends ChangeNotifier {
     } finally {
       _setLoading(false);
     }
-  }
-
-  void setSelectedStore(String? store) {
-    _selectedStore = store;
-    notifyListeners();
   }
 
   void clearError() {
@@ -280,12 +203,21 @@ class PriceProvider extends ChangeNotifier {
 
   Future<String?> _captureExtractionSummary() => _captureRawText();
 
+  Future<void> _tryCaptureCurrentPosition() async {
+    try {
+      final position = await _getCurrentPosition();
+      _latitude = position.latitude;
+      _longitude = position.longitude;
+    } catch (_) {
+      _latitude = null;
+      _longitude = null;
+    }
+  }
+
   Future<Position> _getCurrentPosition() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      throw const PermissionDeniedException(
-        'Location services are disabled. Please enable GPS.',
-      );
+      throw Exception('Location services are disabled.');
     }
 
     var permission = await Geolocator.checkPermission();
@@ -295,25 +227,12 @@ class PriceProvider extends ChangeNotifier {
 
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
-      throw const PermissionDeniedException(
-        'Location permission denied. Please allow location access.',
-      );
+      throw Exception('Location permission denied.');
     }
 
     return Geolocator.getCurrentPosition(
       locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
     );
-  }
-
-  String? _distanceLabelFrom(Map<String, dynamic> json) {
-    final distance = json['distance'];
-    if (distance is num) {
-      return '${distance.toStringAsFixed(1)} km';
-    }
-    if (distance != null) {
-      return distance.toString();
-    }
-    return null;
   }
 
   void _setLoading(bool value) {
@@ -325,12 +244,21 @@ class PriceProvider extends ChangeNotifier {
     if (exception.error.status == 401 || exception.error.status == 403) {
       return 'Your session expired. Please log in again.';
     }
+
+    if (exception.error.status == 400 &&
+        exception.error.message.trim().toLowerCase() == 'validation failed') {
+      final details = exception.error.details;
+      if (details != null && details.isNotEmpty) {
+        final entries = details.entries
+            .where((entry) => entry.value != null)
+            .map((entry) => '${entry.key}: ${entry.value}')
+            .toList(growable: false);
+        if (entries.isNotEmpty) {
+          return entries.join('\n');
+        }
+      }
+    }
+
     return exception.error.message;
   }
-}
-
-class PermissionDeniedException implements Exception {
-  final String message;
-
-  const PermissionDeniedException(this.message);
 }

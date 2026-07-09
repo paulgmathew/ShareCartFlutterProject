@@ -1,3 +1,4 @@
+import '../models/confirm_prices_request_model.dart';
 import 'api_client.dart';
 
 class PriceApiService {
@@ -19,43 +20,21 @@ class PriceApiService {
     return _apiClient.post('/prices/capture', body: body);
   }
 
-  Future<Map<String, dynamic>> confirmPrice({
-    required String captureId,
-    required String itemName,
-    required double price,
-    required String unit,
-    required String storeName,
-    double? latitude,
-    double? longitude,
-  }) async {
-    final body = <String, dynamic>{
-      'captureId': captureId,
-      'itemName': itemName,
-      'price': price,
-      'unit': unit,
-      'storeName': storeName,
-    };
-    if (latitude != null) body['latitude'] = latitude;
-    if (longitude != null) body['longitude'] = longitude;
-
-    return _apiClient.post('/prices/confirm', body: body);
+  Future<Map<String, dynamic>> confirmPrices(
+    ConfirmPricesRequest request,
+  ) async {
+    return _apiClient.post('/prices/confirm', body: request.toJson());
   }
 
-  Future<Map<String, dynamic>> comparePrice(Map<String, dynamic> body) {
-    return _apiClient.post('/prices/compare', body: body);
-  }
+  Future<List<Map<String, dynamic>>> getPriceHistory({String? itemName}) async {
+    final hasFilter = itemName != null && itemName.trim().isNotEmpty;
+    final query =
+        hasFilter
+            ? '?itemName=${Uri.encodeQueryComponent(itemName.trim())}'
+            : '';
 
-  Future<List<Map<String, dynamic>>> getNearbyStores({
-    required double latitude,
-    required double longitude,
-  }) async {
-    final encodedLat = Uri.encodeQueryComponent(latitude.toString());
-    final encodedLon = Uri.encodeQueryComponent(longitude.toString());
-    final list = await _apiClient.getList(
-      '/stores/nearby?lat=$encodedLat&lon=$encodedLon',
-    );
-
-    return list
+    final response = await _apiClient.getList('/prices/history$query');
+    return response
         .map((e) => (e as Map).cast<String, dynamic>())
         .toList(growable: false);
   }

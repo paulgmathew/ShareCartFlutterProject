@@ -28,8 +28,13 @@ Share Cart connects to a [Spring Boot REST backend](docs/flutter-backend-integra
 - **Items grouped by category** on the detail screen
 - **Swipe-to-delete** with confirmation
 - **Pull-to-refresh** to sync with the backend
+- **Real-time collaborative sync** — lists update live across members via WebSockets (STOMP)
+- **AI receipt/price-tag extraction** via ShareCart AI service (`/receipt/extract`)
+- **Multi-item editable scan flow** — edit and confirm multiple extracted items in one pass
+- **Price history** — view previously captured item prices, filterable by item name
+- **Location tagging** — attaches your location (`geolocator`) to captured prices
 - **Secure token storage** using `flutter_secure_storage` (not SharedPreferences)
-- **Auto-logout** on 403 — app returns to login screen if token expires
+- **Auto-logout** on 401/403 — app returns to login screen if token is invalid/expired
 - **Material 3** theming with automatic light/dark mode
 
 ---
@@ -68,6 +73,9 @@ Notes:
 | Sharing            | `share_plus`                     |
 | QR Rendering       | `qr_flutter`                     |
 | QR Scanning        | `mobile_scanner`                 |
+| Image Capture      | `image_picker`                   |
+| AI Extraction      | ShareCart AI Service (`/receipt/extract`) |
+| Location           | `geolocator`                     |
 | Design System      | Material 3 with green color seed |
 | Backend            | Spring Boot REST API (JWT)       |
 
@@ -97,6 +105,7 @@ lib/
 │   ├── invite_link_response_model.dart
 │   ├── accept_invite_response_model.dart
 │   ├── invite_preview_model.dart
+│   ├── receipt_extraction_model.dart
 │   └── api_error_model.dart
 ├── services/
 │   ├── services.dart                  # Barrel export
@@ -105,6 +114,8 @@ lib/
 │   ├── shopping_list_api_service.dart
 │   ├── item_api_service.dart
 │   ├── invite_api_service.dart
+│   ├── price_api_service.dart
+│   ├── receipt_extraction_api_service.dart
 │   ├── pending_invite_service.dart
 │   └── realtime_sync_service.dart
 ├── repositories/
@@ -114,7 +125,8 @@ lib/
 ├── providers/
 │   ├── auth_provider.dart
 │   ├── home_provider.dart
-│   └── list_detail_provider.dart
+│   ├── list_detail_provider.dart
+│   └── price_provider.dart
 └── screens/
     ├── auth/
     │   ├── auth_gate.dart             # Routes to login or home based on auth state
@@ -129,6 +141,8 @@ lib/
     │   ├── invite_preview_screen.dart
     │   ├── invite_qr_widget.dart
     │   └── scan_qr_screen.dart
+    ├── price_scan/
+    │   └── price_scan_screen.dart
     └── list_detail/
         ├── list_detail_screen.dart
         └── widgets/
@@ -175,13 +189,19 @@ Open `lib/config/api_config.dart` and set the `useProductionServer` flag:
 static const bool useProductionServer = true;
 ```
 
-When using **local mode**, the base URL is auto-detected per platform:
+When using **production mode**, the app uses:
 
-| Platform              | Base URL                         |
-|-----------------------|----------------------------------|
-| Android emulator      | `http://10.0.2.2:8080/api/v1`   |
-| iOS simulator / macOS | `http://127.0.0.1:8080/api/v1`  |
-| Web (Chrome)          | `http://localhost:8080/api/v1`   |
+- Spring API: `https://sharecartspringbootproject.onrender.com/api/v1`
+- AI API: `https://sharecart-ai-services.onrender.com/api/v1`
+- WebSocket: `wss://sharecartspringbootproject.onrender.com/ws`
+
+When using **local mode**, URLs are auto-detected per platform:
+
+| Platform              | Spring API                        | AI API                           |
+|-----------------------|-----------------------------------|----------------------------------|
+| Android emulator      | `http://10.0.2.2:8080/api/v1`    | `http://10.0.2.2:8000/api/v1`    |
+| iOS simulator / macOS | `http://127.0.0.1:8080/api/v1`   | `http://127.0.0.1:8000/api/v1`   |
+| Web (Chrome)          | `http://localhost:8080/api/v1`   | `http://localhost:8000/api/v1`   |
 
 See [docs/environment-config.md](docs/environment-config.md) for full details.
 
@@ -236,6 +256,11 @@ All protected endpoints require an `Authorization: Bearer <token>` header. The t
 | Add item            | `POST`   | Required | `/api/v1/lists/{listId}/items`   |
 | Update item         | `PUT`    | Required | `/api/v1/items/{id}`             |
 | Delete item         | `DELETE` | Required | `/api/v1/items/{id}`             |
+| Extract receipt/price-tag (AI) | `POST` | Required | `/api/v1/receipt/extract` |
+| Capture extraction summary | `POST` | Required | `/api/v1/prices/capture` |
+| Confirm extracted price | `POST` | Required | `/api/v1/prices/confirm` |
+| Compare submitted price | `POST` | Required | `/api/v1/prices/compare` |
+| Nearby stores by location | `GET` | Required | `/api/v1/stores/nearby?lat={lat}&lon={lon}` |
 
 Full API contract: [docs/flutter-backend-integration.md](docs/flutter-backend-integration.md).
 
@@ -248,6 +273,8 @@ Full API contract: [docs/flutter-backend-integration.md](docs/flutter-backend-in
 - [x] Invite by shareable link + deep link handling
 - [x] QR code invite generation and scanning
 - [x] Real-time sync via WebSockets
+- [x] AI-based receipt/price-tag extraction
+- [x] Multi-item editable price confirmation flow
 - [ ] User search / discovery for invitations
 - [ ] Delete shopping lists
 - [ ] Offline mode with local caching

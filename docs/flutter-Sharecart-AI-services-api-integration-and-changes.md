@@ -19,12 +19,12 @@ Primary deployed base URL:
 ## 2. End-to-End System Placement
 
 Current ShareCart architecture:
-- Flutter app captures or uploads image
+- Flutter app captures image from camera
 - Flutter sends image + existing JWT token to this AI service
 - AI service validates JWT locally (shared secret with Spring Boot)
 - AI service returns extracted items to Flutter
 - Flutter shows extracted items to user for review/edit
-- Flutter sends confirmed final data to Spring Boot for persistence
+- Flutter sends extracted text to Spring Boot capture API and confirmed items to Spring Boot confirm API for persistence
 
 So the runtime flow is:
 - Image source: Flutter
@@ -44,7 +44,7 @@ What replaces it:
 - Flutter receives structured grocery items/prices and presents them for user confirmation
 
 Expected Flutter changes:
-- Keep image capture UI (camera/gallery) as-is
+- Keep image capture UI as camera-based capture (current implementation)
 - Remove ML Kit OCR extraction logic from runtime flow
 - Call POST /api/v1/receipt/extract with multipart image + scanType
 - Continue to send user-confirmed final data to Spring Boot APIs for persistence
@@ -136,6 +136,45 @@ Common error statuses Flutter should handle:
 - 422: validation error / invalid image
 - 429: rate limit exceeded
 - 500: AI processing failure or timeout
+
+### 3.4 Current Flutter persistence flow after AI extraction
+
+After extraction succeeds, the current Flutter app calls Spring Boot endpoints in this order:
+1. POST /api/v1/prices/capture
+  - Sent once to capture extracted raw text and receive captureId.
+2. POST /api/v1/prices/confirm
+  - Sent once per valid item in a loop when user taps confirm.
+  - Request body fields: captureId, itemName, price, unit, storeName, latitude (optional), longitude (optional).
+3. POST /api/v1/prices/compare
+  - Sent on the last confirmed item to show cheapest/best-known price feedback.
+
+### 3.5 How confirmed item prices are saved (exact behavior)
+
+Confirmed item prices are saved through POST /api/v1/prices/confirm.
+
+Current Flutter request payload to /api/v1/prices/confirm:
+
+{
+  "captureId": "<capture-id-from-prices-capture>",
+  "itemName": "Whole Milk",
+  "price": 4.89,
+  "unit": "1 gallon",
+  "storeName": "Walmart",
+  "latitude": 12.9716,
+  "longitude": 77.5946
+}
+
+Notes:
+- latitude and longitude are included only when location is available.
+- The Flutter app sends one /prices/confirm call per valid item (not a bulk payload).
+- createdBy is not passed in this request body by Flutter; Spring Boot should derive it from JWT.
+
+Other Spring Boot APIs in this flow and whether they save confirmed prices:
+- POST /api/v1/prices/capture: used to store extraction summary/raw text and return captureId. It is not the confirmed-price save call.
+- POST /api/v1/prices/compare: used for price comparison response. It is not a confirmed-price save call.
+
+Conclusion:
+- In the current Flutter implementation, confirmed prices are saved via /api/v1/prices/confirm only.
 
 ## 4. JWT Reuse with Spring Boot
 
@@ -233,7 +272,7 @@ Flutter integration contract:
 2. Pass same JWT in Authorization header to AI endpoint.
 3. Send image as multipart with scanType.
 4. On success, show extracted items for user confirmation.
-5. After user confirms/edits, send final payload to Spring Boot API.
+5. After user confirms/edits, send final payload to Spring Boot /api/v1/prices/confirm (one request per valid item in current Flutter implementation).
 6. Handle AI endpoint error statuses gracefully:
    - Retry suggestion for 500/timeout
    - User message for 429 with backoff
