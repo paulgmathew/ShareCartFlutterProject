@@ -8,3 +8,5 @@ export 'auth_response_model.dart';
 export 'invite_link_response_model.dart';
 export 'accept_invite_response_model.dart';
 export 'invite_preview_model.dart';
+export 'confirm_prices_request_model.dart';
+export 'receipt_extraction_model.dart';

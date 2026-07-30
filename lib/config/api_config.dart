@@ -10,6 +10,8 @@ class ApiConfig {
 
   static const String _productionBaseUrl =
       'https://sharecartspringbootproject.onrender.com/api/v1';
+  static const String _productionAiBaseUrl =
+      'https://sharecart-ai-services.onrender.com/api/v1';
   static const String _productionWebSocketUrl =
       'wss://sharecartspringbootproject.onrender.com/ws';
 
@@ -27,8 +29,17 @@ class ApiConfig {
     return 'ws://127.0.0.1:8080/ws';
   }
 
+  static String get _localAiBaseUrl {
+    if (kIsWeb) return 'http://localhost:8000/api/v1';
+    if (Platform.isAndroid) return 'http://10.0.2.2:8000/api/v1';
+    return 'http://127.0.0.1:8000/api/v1';
+  }
+
   static String get baseUrl =>
       useProductionServer ? _productionBaseUrl : _localBaseUrl;
+
+  static String get aiBaseUrl =>
+      useProductionServer ? _productionAiBaseUrl : _localAiBaseUrl;
 
   static String get webSocketUrl =>
       useProductionServer ? _productionWebSocketUrl : _localWebSocketUrl;
