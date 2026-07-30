@@ -73,6 +73,7 @@ Notes:
 | Sharing            | `share_plus`                     |
 | QR Rendering       | `qr_flutter`                     |
 | QR Scanning        | `mobile_scanner`                 |
+| Real-time Sync     | `stomp_dart_client` (WebSocket/STOMP) |
 | Image Capture      | `image_picker`                   |
 | AI Extraction      | ShareCart AI Service (`/receipt/extract`) |
 | Location           | `geolocator`                     |
@@ -106,6 +107,9 @@ lib/
 │   ├── accept_invite_response_model.dart
 │   ├── invite_preview_model.dart
 │   ├── receipt_extraction_model.dart
+│   ├── confirm_prices_request_model.dart
+│   ├── item_price_model.dart
+│   ├── list_realtime_event_model.dart
 │   └── api_error_model.dart
 ├── services/
 │   ├── services.dart                  # Barrel export
@@ -126,7 +130,8 @@ lib/
 │   ├── auth_provider.dart
 │   ├── home_provider.dart
 │   ├── list_detail_provider.dart
-│   └── price_provider.dart
+│   ├── price_provider.dart
+│   └── price_history_provider.dart
 └── screens/
     ├── auth/
     │   ├── auth_gate.dart             # Routes to login or home based on auth state
@@ -143,6 +148,8 @@ lib/
     │   └── scan_qr_screen.dart
     ├── price_scan/
     │   └── price_scan_screen.dart
+    ├── price_history/
+    │   └── price_history_screen.dart
     └── list_detail/
         ├── list_detail_screen.dart
         └── widgets/
@@ -259,8 +266,7 @@ All protected endpoints require an `Authorization: Bearer <token>` header. The t
 | Extract receipt/price-tag (AI) | `POST` | Required | `/api/v1/receipt/extract` |
 | Capture extraction summary | `POST` | Required | `/api/v1/prices/capture` |
 | Confirm extracted price | `POST` | Required | `/api/v1/prices/confirm` |
-| Compare submitted price | `POST` | Required | `/api/v1/prices/compare` |
-| Nearby stores by location | `GET` | Required | `/api/v1/stores/nearby?lat={lat}&lon={lon}` |
+| Get price history | `GET` | Required | `/api/v1/prices/history?itemName={name}` |
 
 Full API contract: [docs/flutter-backend-integration.md](docs/flutter-backend-integration.md).
 
@@ -275,6 +281,7 @@ Full API contract: [docs/flutter-backend-integration.md](docs/flutter-backend-in
 - [x] Real-time sync via WebSockets
 - [x] AI-based receipt/price-tag extraction
 - [x] Multi-item editable price confirmation flow
+- [x] Price history view with item-name filtering
 - [ ] User search / discovery for invitations
 - [ ] Delete shopping lists
 - [ ] Offline mode with local caching

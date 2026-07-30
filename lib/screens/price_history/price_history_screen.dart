@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/item_price_model.dart';
 import '../../providers/price_history_provider.dart';
 import '../../services/price_api_service.dart';
 
@@ -102,22 +103,70 @@ class _PriceHistoryBodyState extends State<_PriceHistoryBody> {
         separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (context, index) {
           final item = provider.items[index];
-          return Card(
-            child: ListTile(
-              title: Text(item.itemName),
-              subtitle: Text(
-                '${item.storeName ?? 'Unknown store'}'
-                ' • ${item.unit ?? 'unit n/a'}'
-                ' • ${_formatCapturedAt(item.capturedAt)}',
-              ),
-              trailing: Text(
-                _formatCurrency(item.price),
-                style: Theme.of(context).textTheme.titleMedium,
+          return Dismissible(
+            key: ValueKey(item.id),
+            direction: DismissDirection.endToStart,
+            background: Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 20),
+              color: Theme.of(context).colorScheme.error,
+              child: const Icon(Icons.delete, color: Colors.white),
+            ),
+            confirmDismiss: (_) => _confirmDelete(context, item),
+            onDismissed: (_) => _deleteItem(item),
+            child: Card(
+              child: ListTile(
+                title: Text(item.itemName),
+                subtitle: Text(
+                  '${item.storeName ?? 'Unknown store'}'
+                  ' • ${item.unit ?? 'unit n/a'}'
+                  ' • ${_formatCapturedAt(item.capturedAt)}',
+                ),
+                trailing: Text(
+                  _formatCurrency(item.price),
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
             ),
           );
         },
       ),
+    );
+  }
+
+  Future<bool> _confirmDelete(BuildContext context, ItemPriceModel item) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Delete Price Entry'),
+            content: Text(
+              'Delete "${item.itemName}" (${_formatCurrency(item.price)}) '
+              'from your price history?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+    );
+    return result ?? false;
+  }
+
+  Future<void> _deleteItem(ItemPriceModel item) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final success = await context.read<PriceHistoryProvider>().deleteItem(
+      item.id,
+    );
+    if (!mounted || !success) return;
+    messenger.showSnackBar(
+      SnackBar(content: Text('Deleted "${item.itemName}"')),
     );
   }
 
