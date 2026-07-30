@@ -38,6 +38,29 @@ class PriceHistoryProvider extends ChangeNotifier {
     }
   }
 
+  Future<bool> deleteItem(String id) async {
+    final index = _items.indexWhere((item) => item.id == id);
+    if (index < 0) return false;
+
+    final removed = _items[index];
+    _items = List<ItemPriceModel>.from(_items)..removeAt(index);
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      await _priceApiService.deletePriceHistory(id);
+      return true;
+    } on ApiException catch (e) {
+      _errorMessage = _messageForApiException(e);
+    } catch (_) {
+      _errorMessage = 'Could not delete this price entry. Please try again.';
+    }
+
+    _items = List<ItemPriceModel>.from(_items)..insert(index, removed);
+    notifyListeners();
+    return false;
+  }
+
   void clearError() {
     _errorMessage = null;
     notifyListeners();

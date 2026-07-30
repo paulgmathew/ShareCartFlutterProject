@@ -38,4 +38,8 @@ class PriceApiService {
         .map((e) => (e as Map).cast<String, dynamic>())
         .toList(growable: false);
   }
+
+  Future<void> deletePriceHistory(String id) {
+    return _apiClient.delete('/prices/history/$id');
+  }
 }
