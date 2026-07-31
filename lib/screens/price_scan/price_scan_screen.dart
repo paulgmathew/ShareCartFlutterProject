@@ -3,11 +3,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/canonical_item_model.dart';
 import '../../models/confirm_prices_request_model.dart';
 import '../../models/receipt_extraction_model.dart';
 import '../../providers/price_provider.dart';
 import '../../services/price_api_service.dart';
 import '../../services/receipt_extraction_api_service.dart';
+import '../../widgets/canonical_item_picker.dart';
 
 class PriceScanScreen extends StatelessWidget {
   const PriceScanScreen({super.key});
@@ -223,12 +225,17 @@ class _PriceScanBodyState extends State<_PriceScanBody> {
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                TextField(
+                                CanonicalItemPicker(
                                   controller: item.itemNameController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Item Name',
-                                    border: OutlineInputBorder(),
-                                  ),
+                                  initialSearchText:
+                                      item.itemNameController.text,
+                                  labelText: 'Item Name',
+                                  hintText: 'e.g. Milk',
+                                  onSelected: (selected) {
+                                    setState(() {
+                                      item.selectedCanonicalItem = selected;
+                                    });
+                                  },
                                 ),
                                 const SizedBox(height: 8),
                                 Row(
@@ -360,6 +367,7 @@ class _PriceScanBodyState extends State<_PriceScanBody> {
 }
 
 class _EditableExtractedItem {
+  CanonicalItemModel? selectedCanonicalItem;
   final TextEditingController itemNameController;
   final TextEditingController priceController;
   final TextEditingController quantityController;
@@ -474,6 +482,7 @@ class _EditableExtractedItem {
     final quantity = _parseQuantity(quantityController.text) ?? 1;
     return ConfirmPriceItem(
       itemName: itemNameController.text.trim(),
+      canonicalItemId: selectedCanonicalItem?.id,
       price: price,
       quantity: quantity,
       unit: unitController.text.trim(),

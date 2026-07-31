@@ -9,11 +9,13 @@ class ItemApiService {
   Future<ItemModel> addItem(
     String listId, {
     required String name,
+    String? canonicalItemId,
     String? quantity,
     String? category,
     String? createdBy,
   }) async {
     final body = <String, dynamic>{'name': name};
+    if (canonicalItemId != null) body['canonicalItemId'] = canonicalItemId;
     if (quantity != null) body['quantity'] = quantity;
     if (category != null) body['category'] = category;
     if (createdBy != null) body['createdBy'] = createdBy;

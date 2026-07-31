@@ -59,6 +59,7 @@ class StoreInfo {
 
 class ConfirmPriceItem {
   final String itemName;
+  final String? canonicalItemId;
   final double price;
   final num quantity;
   final String unit;
@@ -67,6 +68,7 @@ class ConfirmPriceItem {
 
   const ConfirmPriceItem({
     required this.itemName,
+    this.canonicalItemId,
     required this.price,
     required this.quantity,
     required this.unit,
@@ -77,6 +79,7 @@ class ConfirmPriceItem {
   factory ConfirmPriceItem.fromJson(Map<String, dynamic> json) {
     return ConfirmPriceItem(
       itemName: (json['itemName'] ?? '').toString(),
+      canonicalItemId: json['canonicalItemId']?.toString(),
       price: _readNum(json['price'])?.toDouble() ?? 0,
       quantity: _readNum(json['quantity']) ?? 0,
       unit: (json['unit'] ?? '').toString(),
@@ -88,6 +91,8 @@ class ConfirmPriceItem {
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{
       'itemName': itemName,
+      if (canonicalItemId != null && canonicalItemId!.trim().isNotEmpty)
+        'canonicalItemId': canonicalItemId,
       'price': price,
       'quantity': _compactNum(quantity),
       'unit': unit,

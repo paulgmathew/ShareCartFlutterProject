@@ -8,6 +8,7 @@ import '../invite/scan_qr_screen.dart';
 import '../list_detail/list_detail_screen.dart';
 import '../price_history/price_history_screen.dart';
 import '../price_scan/price_scan_screen.dart';
+import '../settings/settings_screen.dart';
 import 'widgets/create_list_dialog.dart';
 import 'widgets/open_list_dialog.dart';
 
@@ -52,6 +53,14 @@ class HomeScreen extends StatelessWidget {
             onPressed:
                 () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const PriceHistoryScreen()),
+                ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed:
+                () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
                 ),
           ),
           IconButton(

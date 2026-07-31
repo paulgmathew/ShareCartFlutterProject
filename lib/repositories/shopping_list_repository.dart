@@ -40,6 +40,7 @@ class ShoppingListRepository {
   Future<ItemModel> addItem(
     String listId, {
     required String name,
+    String? canonicalItemId,
     String? quantity,
     String? category,
     String? createdBy,
@@ -47,6 +48,7 @@ class ShoppingListRepository {
     return _itemService.addItem(
       listId,
       name: name,
+      canonicalItemId: canonicalItemId,
       quantity: quantity,
       category: category,
       createdBy: createdBy,
