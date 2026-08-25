@@ -32,9 +32,14 @@ class AuthProvider extends ChangeNotifier {
   String? get name => _authRepository.name;
 
   Future<void> _bootstrap() async {
-    await _authRepository.bootstrapSession();
-    _isBootstrapping = false;
-    notifyListeners();
+    try {
+      await _authRepository.bootstrapSession();
+    } catch (error) {
+      debugPrint('Auth bootstrap failed: $error');
+    } finally {
+      _isBootstrapping = false;
+      notifyListeners();
+    }
   }
 
   Future<void> register({

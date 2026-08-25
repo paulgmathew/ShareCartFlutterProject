@@ -19,8 +19,7 @@ class BestStoreOptionModel {
     return BestStoreOptionModel(
       storeId: json['storeId']?.toString(),
       storeName: (json['storeName'] ?? '').toString(),
-      lowestPrice:
-          json['lowestPrice'] == null ? 0 : _readDouble(json['lowestPrice']),
+      lowestPrice: json['price'] == null ? 0 : _readDouble(json['price']),
     );
   }
 }

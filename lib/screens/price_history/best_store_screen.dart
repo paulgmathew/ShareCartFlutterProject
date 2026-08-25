@@ -120,12 +120,6 @@ class _BestStoreScreenState extends State<BestStoreScreen> {
                           store.distanceLabel,
                         ].join(' • '),
                       ),
-                      trailing:
-                          store.price == null
-                              ? null
-                              : Text(
-                                '\$${store.price!.toStringAsFixed(2)}${store.unit == null || store.unit!.isEmpty ? '' : ' / ${store.unit}'}',
-                              ),
                     ),
                   ),
                 ),
@@ -168,14 +162,12 @@ class _BestStoreScreenState extends State<BestStoreScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              comparison.itemName ?? widget.itemName,
+              widget.itemName,
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 8),
-            Text(comparison.message ?? 'Comparison loaded successfully.'),
-            const SizedBox(height: 12),
-            if (comparison.bestStoreName != null ||
-                comparison.bestPrice != null)
+            if (comparison.lowestStoreName != null ||
+                comparison.lowestPrice != null)
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -183,26 +175,18 @@ class _BestStoreScreenState extends State<BestStoreScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  'Best: ${comparison.bestStoreName ?? 'Unknown store'}'
-                  '${comparison.bestPrice == null ? '' : ' at \$${comparison.bestPrice!.toStringAsFixed(2)}'}'
-                  '${comparison.bestUnit == null || comparison.bestUnit!.isEmpty ? '' : ' / ${comparison.bestUnit}'}',
+                  'Lowest: ${comparison.lowestStoreName ?? 'Unknown store'}'
+                  '${comparison.lowestPrice == null ? '' : ' at \$${comparison.lowestPrice!.toStringAsFixed(2)}'}',
                 ),
               ),
-            if (comparison.hasStores) ...[
+            if (comparison.averagePrice != null ||
+                comparison.totalEntries != null) ...[
               const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder:
-                          (_) => BestStoreScreen(
-                            itemName: comparison.itemName ?? widget.itemName,
-                          ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.map_outlined),
-                label: const Text('Open Best Store Drill-Down'),
+              Text(
+                'Average price: ${comparison.averagePrice == null ? 'n/a' : '\$${comparison.averagePrice!.toStringAsFixed(2)}'}',
+              ),
+              Text(
+                'Total entries: ${comparison.totalEntries?.toString() ?? 'n/a'}',
               ),
             ],
           ],

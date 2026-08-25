@@ -73,7 +73,7 @@ class PriceApiService {
     required String canonicalItemId,
   }) async {
     final response = await _apiClient.getList(
-      '/prices/best-store?canonicalItemId=${Uri.encodeQueryComponent(canonicalItemId)}',
+      '/prices/best-store/${Uri.encodeQueryComponent(canonicalItemId)}',
     );
     return response
         .map((e) => (e as Map).cast<String, dynamic>())
@@ -81,7 +81,10 @@ class PriceApiService {
   }
 
   Future<void> updateMyLocation(UserLocationModel location) async {
-    await _apiClient.patch('/users/me/location', body: location.toJson());
+    await _apiClient.patch(
+      '/users/me/location',
+      body: {'latitude': location.latitude, 'longitude': location.longitude},
+    );
   }
 
   Future<void> deletePriceHistory(String id) {

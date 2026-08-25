@@ -100,10 +100,11 @@ class _CanonicalItemPickerState extends State<CanonicalItemPicker> {
         _matches = const [];
       });
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -181,8 +182,9 @@ class _CanonicalItemPickerState extends State<CanonicalItemPicker> {
                     (item) => ListTile(
                       title: Text(item.name),
                       subtitle:
-                          item.category != null && item.category!.isNotEmpty
-                              ? Text(item.category!)
+                          item.description != null &&
+                                  item.description!.isNotEmpty
+                              ? Text(item.description!)
                               : null,
                       onTap: () => _selectExisting(item),
                     ),
