@@ -14,8 +14,10 @@ import 'services/api_client.dart';
 import 'services/auth_api_service.dart';
 import 'services/item_api_service.dart';
 import 'services/invite_api_service.dart';
+import 'services/catalog_api_service.dart';
 import 'services/pending_invite_service.dart';
 import 'services/price_api_service.dart';
+import 'providers/price_optimization_provider.dart';
 import 'services/receipt_extraction_api_service.dart';
 import 'services/realtime_sync_service.dart';
 import 'services/shopping_list_api_service.dart';
@@ -50,9 +52,11 @@ void main() async {
   final listService = ShoppingListApiService(apiClient);
   final itemService = ItemApiService(apiClient);
   final inviteService = InviteApiService(apiClient);
+  final catalogService = CatalogApiService(apiClient);
   final receiptExtractionService = ReceiptExtractionApiService(aiApiClient);
   final priceService = PriceApiService(apiClient);
   final pendingInviteService = PendingInviteService();
+  final priceOptimizationProvider = PriceOptimizationProvider(priceService);
 
   void handleIncomingLink(Uri uri) {
     final segments = uri.pathSegments;
@@ -103,12 +107,16 @@ void main() async {
         Provider<AuthRepository>.value(value: authRepository),
         Provider<ShoppingListRepository>.value(value: repository),
         Provider<InviteApiService>.value(value: inviteService),
+        Provider<CatalogApiService>.value(value: catalogService),
         Provider<ReceiptExtractionApiService>.value(
           value: receiptExtractionService,
         ),
         Provider<PriceApiService>.value(value: priceService),
         Provider<PendingInviteService>.value(value: pendingInviteService),
         Provider<RealtimeSyncService>.value(value: realtimeSyncService),
+        ChangeNotifierProvider<PriceOptimizationProvider>.value(
+          value: priceOptimizationProvider,
+        ),
         ChangeNotifierProvider(
           create:
               (ctx) => AuthProvider(

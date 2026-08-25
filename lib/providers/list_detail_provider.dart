@@ -46,6 +46,7 @@ class ListDetailProvider extends ChangeNotifier {
 
   Future<void> addItem({
     required String name,
+    String? canonicalItemId,
     String? quantity,
     String? category,
     String? createdBy,
@@ -56,6 +57,7 @@ class ListDetailProvider extends ChangeNotifier {
       await _repository.addItem(
         _shoppingList!.id,
         name: name,
+        canonicalItemId: canonicalItemId,
         quantity: quantity,
         category: category,
         createdBy: createdBy,

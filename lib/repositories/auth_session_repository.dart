@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../models/auth_response_model.dart';
@@ -28,12 +29,29 @@ class AuthSessionRepository extends ChangeNotifier {
   String? get name => _name;
 
   Future<void> loadSession() async {
-    _token = await _storage.read(key: _tokenKey);
-    _tokenType = await _storage.read(key: _tokenTypeKey);
-    _userId = await _storage.read(key: _userIdKey);
-    _email = await _storage.read(key: _emailKey);
-    _name = await _storage.read(key: _nameKey);
-    notifyListeners();
+    try {
+      _token = await _storage.read(key: _tokenKey);
+      _tokenType = await _storage.read(key: _tokenTypeKey);
+      _userId = await _storage.read(key: _userIdKey);
+      _email = await _storage.read(key: _emailKey);
+      _name = await _storage.read(key: _nameKey);
+    } on PlatformException catch (error) {
+      _token = null;
+      _tokenType = null;
+      _userId = null;
+      _email = null;
+      _name = null;
+      debugPrint('Failed to load auth session: $error');
+    } catch (error) {
+      _token = null;
+      _tokenType = null;
+      _userId = null;
+      _email = null;
+      _name = null;
+      debugPrint('Unexpected auth session error: $error');
+    } finally {
+      notifyListeners();
+    }
   }
 
   Future<void> setSession(AuthResponseModel auth) async {
@@ -43,11 +61,17 @@ class AuthSessionRepository extends ChangeNotifier {
     _email = auth.email;
     _name = auth.name;
 
-    await _storage.write(key: _tokenKey, value: auth.token);
-    await _storage.write(key: _tokenTypeKey, value: auth.tokenType);
-    await _storage.write(key: _userIdKey, value: auth.userId);
-    await _storage.write(key: _emailKey, value: auth.email);
-    await _storage.write(key: _nameKey, value: auth.name);
+    try {
+      await _storage.write(key: _tokenKey, value: auth.token);
+      await _storage.write(key: _tokenTypeKey, value: auth.tokenType);
+      await _storage.write(key: _userIdKey, value: auth.userId);
+      await _storage.write(key: _emailKey, value: auth.email);
+      await _storage.write(key: _nameKey, value: auth.name);
+    } on PlatformException catch (error) {
+      debugPrint('Failed to persist auth session: $error');
+    } catch (error) {
+      debugPrint('Unexpected auth session persist error: $error');
+    }
 
     notifyListeners();
   }
@@ -59,11 +83,17 @@ class AuthSessionRepository extends ChangeNotifier {
     _email = null;
     _name = null;
 
-    await _storage.delete(key: _tokenKey);
-    await _storage.delete(key: _tokenTypeKey);
-    await _storage.delete(key: _userIdKey);
-    await _storage.delete(key: _emailKey);
-    await _storage.delete(key: _nameKey);
+    try {
+      await _storage.delete(key: _tokenKey);
+      await _storage.delete(key: _tokenTypeKey);
+      await _storage.delete(key: _userIdKey);
+      await _storage.delete(key: _emailKey);
+      await _storage.delete(key: _nameKey);
+    } on PlatformException catch (error) {
+      debugPrint('Failed to clear auth session: $error');
+    } catch (error) {
+      debugPrint('Unexpected auth session clear error: $error');
+    }
 
     notifyListeners();
   }
@@ -72,7 +102,15 @@ class AuthSessionRepository extends ChangeNotifier {
     if (_token != null && _token!.isNotEmpty) {
       return _token;
     }
-    _token = await _storage.read(key: _tokenKey);
+    try {
+      _token = await _storage.read(key: _tokenKey);
+    } on PlatformException catch (error) {
+      _token = null;
+      debugPrint('Failed to read auth token: $error');
+    } catch (error) {
+      _token = null;
+      debugPrint('Unexpected auth token read error: $error');
+    }
     return _token;
   }
 }

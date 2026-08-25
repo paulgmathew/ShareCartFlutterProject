@@ -2,6 +2,7 @@ class ItemModel {
   final String id;
   final String listId;
   final String name;
+  final String? canonicalItemId;
   final String? quantity;
   final bool isCompleted;
   final String? category;
@@ -13,6 +14,7 @@ class ItemModel {
     required this.id,
     required this.listId,
     required this.name,
+    this.canonicalItemId,
     this.quantity,
     required this.isCompleted,
     this.category,
@@ -26,6 +28,7 @@ class ItemModel {
       id: json['id'] as String,
       listId: json['listId'] as String,
       name: json['name'] as String,
+      canonicalItemId: json['canonicalItemId'] as String?,
       quantity: json['quantity'] as String?,
       isCompleted: json['isCompleted'] as bool,
       category: json['category'] as String?,
@@ -40,6 +43,7 @@ class ItemModel {
       'id': id,
       'listId': listId,
       'name': name,
+      'canonicalItemId': canonicalItemId,
       'quantity': quantity,
       'isCompleted': isCompleted,
       'category': category,
@@ -53,6 +57,7 @@ class ItemModel {
     String? id,
     String? listId,
     String? name,
+    String? canonicalItemId,
     String? quantity,
     bool? isCompleted,
     String? category,
@@ -64,6 +69,7 @@ class ItemModel {
       id: id ?? this.id,
       listId: listId ?? this.listId,
       name: name ?? this.name,
+      canonicalItemId: canonicalItemId ?? this.canonicalItemId,
       quantity: quantity ?? this.quantity,
       isCompleted: isCompleted ?? this.isCompleted,
       category: category ?? this.category,

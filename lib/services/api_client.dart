@@ -150,6 +150,21 @@ class ApiClient {
     return _handleResponse(response);
   }
 
+  Future<Map<String, dynamic>> patch(
+    String path, {
+    Map<String, dynamic>? body,
+  }) async {
+    final headers = await _buildHeaders();
+    final response = await _client
+        .patch(
+          Uri.parse('$_baseUrl$path'),
+          headers: headers,
+          body: body != null ? jsonEncode(body) : null,
+        )
+        .timeout(ApiConfig.connectionTimeout);
+    return _handleResponse(response);
+  }
+
   Future<void> delete(String path) async {
     final headers = await _buildHeaders();
     final response = await _client
@@ -169,8 +184,7 @@ class ApiClient {
   }
 
   Future<Never> _throwApiException(http.Response response) async {
-    if ((response.statusCode == 401 || response.statusCode == 403) &&
-        _onUnauthorized != null) {
+    if (response.statusCode == 401 && _onUnauthorized != null) {
       await _onUnauthorized();
     }
 

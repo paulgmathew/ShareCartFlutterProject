@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../models/canonical_item_model.dart';
 import '../../../models/item_model.dart';
 import '../../../providers/list_detail_provider.dart';
 import '../../../services/api_client.dart';
+import '../../../widgets/canonical_item_picker.dart';
 
 class AddItemSheet extends StatefulWidget {
   final ItemModel? editItem;
@@ -19,6 +21,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
   late final TextEditingController _nameController;
   late final TextEditingController _quantityController;
   late final TextEditingController _categoryController;
+  CanonicalItemModel? _selectedCanonicalItem;
   bool _isSubmitting = false;
   String? _error;
 
@@ -45,6 +48,11 @@ class _AddItemSheetState extends State<AddItemSheet> {
   }
 
   Future<void> _submit() async {
+    if (_nameController.text.trim().isEmpty) {
+      setState(() => _error = 'Item name is required');
+      return;
+    }
+
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -70,6 +78,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
       } else {
         await provider.addItem(
           name: _nameController.text.trim(),
+          canonicalItemId: _selectedCanonicalItem?.id,
           quantity:
               _quantityController.text.trim().isNotEmpty
                   ? _quantityController.text.trim()
@@ -116,22 +125,22 @@ class _AddItemSheetState extends State<AddItemSheet> {
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               ),
-            TextFormField(
+            CanonicalItemPicker(
               controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Item Name',
-                hintText: 'e.g. Milk',
-                border: OutlineInputBorder(),
-              ),
-              textCapitalization: TextCapitalization.sentences,
-              autofocus: true,
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Item name is required';
-                }
-                return null;
+              initialSearchText: widget.editItem?.name,
+              labelText: 'Item Name',
+              hintText: 'e.g. Milk',
+              onSelected: (item) {
+                setState(() => _selectedCanonicalItem = item);
               },
             ),
+            if (_selectedCanonicalItem != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Selected catalog item: ${_selectedCanonicalItem!.name}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
             const SizedBox(height: 12),
             TextFormField(
               controller: _quantityController,
