@@ -26,6 +26,9 @@ class AuthProvider extends ChangeNotifier {
   String? _errorMessage;
   String? get errorMessage => _errorMessage;
 
+  String? _successMessage;
+  String? get successMessage => _successMessage;
+
   bool get isAuthenticated => _authRepository.isAuthenticated;
   String? get userId => _authRepository.userId;
   String? get email => _authRepository.email;
@@ -49,14 +52,52 @@ class AuthProvider extends ChangeNotifier {
   }) async {
     _isSubmitting = true;
     _errorMessage = null;
+    _successMessage = null;
     notifyListeners();
 
     try {
-      await _authRepository.register(
+      final result = await _authRepository.register(
         email: email,
         password: password,
         name: name,
       );
+      _successMessage = result.message;
+    } on ApiException catch (e) {
+      _errorMessage = e.error.message;
+      rethrow;
+    } finally {
+      _isSubmitting = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> verifyEmail(String token) async {
+    _isSubmitting = true;
+    _errorMessage = null;
+    _successMessage = null;
+    notifyListeners();
+
+    try {
+      final result = await _authRepository.verifyEmail(token);
+      _successMessage = result.message;
+    } on ApiException catch (e) {
+      _errorMessage = e.error.message;
+      rethrow;
+    } finally {
+      _isSubmitting = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> resendVerification(String email) async {
+    _isSubmitting = true;
+    _errorMessage = null;
+    _successMessage = null;
+    notifyListeners();
+
+    try {
+      final result = await _authRepository.resendVerification(email);
+      _successMessage = result.message;
     } on ApiException catch (e) {
       _errorMessage = e.error.message;
       rethrow;
@@ -69,12 +110,16 @@ class AuthProvider extends ChangeNotifier {
   Future<void> login({required String email, required String password}) async {
     _isSubmitting = true;
     _errorMessage = null;
+    _successMessage = null;
     notifyListeners();
 
     try {
       await _authRepository.login(email: email, password: password);
     } on ApiException catch (e) {
       _errorMessage = e.error.message;
+      if (e.error.status == 409) {
+        _errorMessage = 'Email not verified.';
+      }
       rethrow;
     } finally {
       _isSubmitting = false;
@@ -84,6 +129,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> logout() async {
     _errorMessage = null;
+    _successMessage = null;
     await _authRepository.logout();
   }
 

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import 'register_screen.dart';
+import 'verify_email_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -34,14 +35,20 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } on ApiException {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.read<AuthProvider>().errorMessage ?? 'Login failed',
-          ),
-        ),
-      );
+      final message =
+          context.read<AuthProvider>().errorMessage ?? 'Login failed';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
+  }
+
+  void _openVerifyEmail() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => VerifyEmailScreen(email: _emailController.text.trim()),
+      ),
+    );
   }
 
   @override
@@ -122,6 +129,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                   : const Text('Login'),
                         ),
                         const SizedBox(height: 12),
+                        TextButton(
+                          onPressed:
+                              auth.isSubmitting ? null : _openVerifyEmail,
+                          child: const Text('Verify email'),
+                        ),
+                        const SizedBox(height: 6),
                         TextButton(
                           onPressed:
                               auth.isSubmitting

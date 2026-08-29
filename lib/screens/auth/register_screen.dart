@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
+import 'verify_email_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -38,7 +39,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 : _nameController.text.trim(),
       );
       if (!mounted) return;
-      Navigator.of(context).pop();
+
+      final email = _emailController.text.trim();
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => VerifyEmailScreen(email: email)),
+      );
     } on ApiException {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
