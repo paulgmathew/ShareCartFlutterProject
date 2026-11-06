@@ -6,6 +6,9 @@
         android:label="share_cart"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value=" AIzaSyDTtY8VdBs2ux4l8ZXh04-gWKSOVGGU4tI" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
