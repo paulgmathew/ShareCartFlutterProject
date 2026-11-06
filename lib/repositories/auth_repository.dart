@@ -1,3 +1,5 @@
+import '../models/register_response_model.dart';
+import '../models/verify_email_response_model.dart';
 import '../services/auth_api_service.dart';
 import 'auth_session_repository.dart';
 
@@ -20,17 +22,24 @@ class AuthRepository {
   String? get email => _sessionRepository.email;
   String? get name => _sessionRepository.name;
 
-  Future<void> register({
+  Future<RegisterResponseModel> register({
     required String email,
     required String password,
     String? name,
   }) async {
-    final auth = await _authApiService.register(
+    return _authApiService.register(
       email: email,
       password: password,
       name: name,
     );
-    await _sessionRepository.setSession(auth);
+  }
+
+  Future<VerifyEmailResponseModel> verifyEmail(String token) async {
+    return _authApiService.verifyEmail(token);
+  }
+
+  Future<VerifyEmailResponseModel> resendVerification(String email) async {
+    return _authApiService.resendVerification(email);
   }
 
   Future<void> login({required String email, required String password}) async {

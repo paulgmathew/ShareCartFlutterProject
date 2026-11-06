@@ -1,4 +1,7 @@
 import '../models/auth_response_model.dart';
+import '../models/register_response_model.dart';
+import '../models/resend_verification_request_model.dart';
+import '../models/verify_email_response_model.dart';
 import 'api_client.dart';
 
 class AuthApiService {
@@ -6,7 +9,7 @@ class AuthApiService {
 
   AuthApiService(this._apiClient);
 
-  Future<AuthResponseModel> register({
+  Future<RegisterResponseModel> register({
     required String email,
     required String password,
     String? name,
@@ -17,7 +20,23 @@ class AuthApiService {
     }
 
     final json = await _apiClient.post('/auth/register', body: body);
-    return AuthResponseModel.fromJson(json);
+    return RegisterResponseModel.fromJson(json);
+  }
+
+  Future<VerifyEmailResponseModel> verifyEmail(String token) async {
+    final json = await _apiClient.get(
+      '/auth/verify-email?token=${Uri.encodeQueryComponent(token.trim())}',
+    );
+    return VerifyEmailResponseModel.fromJson(json);
+  }
+
+  Future<VerifyEmailResponseModel> resendVerification(String email) async {
+    final request = ResendVerificationRequestModel(email: email.trim());
+    final json = await _apiClient.post(
+      '/auth/resend-verification',
+      body: request.toJson(),
+    );
+    return VerifyEmailResponseModel.fromJson(json);
   }
 
   Future<AuthResponseModel> login({
